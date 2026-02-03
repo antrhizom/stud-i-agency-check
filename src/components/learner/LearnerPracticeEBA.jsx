@@ -39,7 +39,9 @@ import {
   Check,
   Plus,
   Minus,
-  Info
+  Info,
+  ListChecks,
+  Trash2
 } from 'lucide-react';
 import ZirkularitaetDashboard from './ZirkularitaetDashboard';
 
@@ -641,22 +643,221 @@ const ThemaCard = ({ thema, entries, onSaveKompetenz, onSaveSchluessel, onSaveTr
 // ============================================
 // MAIN COMPONENT
 // ============================================
+// Helper: Finde Kompetenz nach ID
+const findKompetenzById = (kompetenzId) => {
+  for (const thema of themen) {
+    for (const lb of thema.lebensbezuege) {
+      for (const komp of lb.kompetenzen) {
+        if (komp.id === kompetenzId) {
+          return { kompetenz: komp, thema, lebensbezug: lb };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+// Eintrag-Detailansicht Komponente
+const EntryDetailCard = ({ entry, onDelete }) => {
+  const statusLabel = STATUS_OPTIONS.find(s => s.id === entry.status)?.label || entry.status;
+  const statusColor = STATUS_OPTIONS.find(s => s.id === entry.status)?.color || '#F3F4F6';
+
+  // Kompetenz-Eintrag
+  if (entry.type === 'kompetenz' && entry.kompetenzId) {
+    const found = findKompetenzById(entry.kompetenzId);
+    if (!found) return null;
+    const { kompetenz, thema, lebensbezug } = found;
+
+    return (
+      <div className="bg-white border rounded-lg p-4 mb-3 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            {/* Thema & Lebensbezug */}
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: thema.color }} />
+              <span className="text-xs font-medium text-gray-500">
+                Thema {thema.order}: {thema.title}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 mb-2">{lebensbezug.title}</p>
+
+            {/* Kompetenz */}
+            <p className="text-sm font-medium text-gray-800 mb-3">{kompetenz.text}</p>
+
+            {/* Gesellschaftliche Inhalte */}
+            {kompetenz.gesellschaft.map((g, idx) => {
+              const bereichInfo = getGesellschaftsinhaltById(g.bereich);
+              return (
+                <div key={idx} className="p-2 rounded-lg text-xs mb-2" style={{ backgroundColor: uiColors.gesellschaft.bg }}>
+                  <div className="flex items-center gap-1 mb-1">
+                    <BookOpen className="w-3 h-3" style={{ color: uiColors.gesellschaft.text }} />
+                    <span className="font-medium" style={{ color: uiColors.gesellschaft.text }}>
+                      {bereichInfo?.label || g.bereich}
+                    </span>
+                  </div>
+                  <p className="text-gray-700">{g.inhalt}</p>
+                </div>
+              );
+            })}
+
+            {/* Sprachmodi Pflicht */}
+            {kompetenz.sprachmpiPflicht.map((sp, idx) => {
+              const modusInfo = getSprachmodusById(sp.modus);
+              return (
+                <div key={idx} className="p-2 rounded-lg text-xs mb-2" style={{ backgroundColor: uiColors.sprache.bg }}>
+                  <div className="flex items-center gap-1 mb-1">
+                    <MessageSquare className="w-3 h-3" style={{ color: uiColors.sprache.text }} />
+                    <span className="font-medium" style={{ color: uiColors.sprache.text }}>
+                      {modusInfo?.label || sp.modus} ({modusInfo?.code})
+                    </span>
+                  </div>
+                  <p className="text-gray-700">{sp.inhalt}</p>
+                </div>
+              );
+            })}
+
+            {/* Optionale Sprachmodi falls gewählt */}
+            {entry.optionalSprachmodi && entry.optionalSprachmodi.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                <span className="text-xs text-gray-500">+ Zusätzlich:</span>
+                {entry.optionalSprachmodi.map(modusId => {
+                  const modus = getSprachmodusById(modusId);
+                  return (
+                    <span key={modusId} className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
+                      {modus?.label || modusId}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Erfassungsdetails */}
+            <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
+              <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
+              <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
+              <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
+              {entry.createdAt && (
+                <span className="text-gray-400">
+                  {entry.createdAt.toLocaleDateString('de-CH')}
+                </span>
+              )}
+            </div>
+
+            {entry.note && (
+              <p className="mt-2 text-xs text-gray-600 italic bg-gray-50 p-2 rounded">{entry.note}</p>
+            )}
+          </div>
+
+          <button
+            onClick={() => onDelete(entry.id)}
+            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Schlüsselkompetenz-Eintrag
+  if (entry.type === 'schluesselkompetenz' && entry.schluesselkompetenzId) {
+    const sk = getSchluesselkompetenzById(entry.schluesselkompetenzId);
+    const thema = themen.find(t => t.id === entry.themaId);
+
+    return (
+      <div className="bg-white border rounded-lg p-4 mb-3 shadow-sm" style={{ borderLeftColor: uiColors.schluessel.text, borderLeftWidth: 4 }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="w-4 h-4" style={{ color: uiColors.schluessel.text }} />
+              <span className="text-xs font-medium" style={{ color: uiColors.schluessel.text }}>Schlüsselkompetenz</span>
+              {thema && (
+                <span className="text-xs text-gray-400">• Thema {thema.order}</span>
+              )}
+            </div>
+            <p className="text-xs font-mono text-gray-500">{sk?.code}</p>
+            <p className="text-sm font-medium text-gray-800">{sk?.label}</p>
+
+            <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
+              <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
+              <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
+              {entry.createdAt && (
+                <span className="text-gray-400">
+                  {entry.createdAt.toLocaleDateString('de-CH')}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button
+            onClick={() => onDelete(entry.id)}
+            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Transversales Thema-Eintrag
+  if (entry.type === 'transversal' && entry.transversalId) {
+    const tt = transversaleThemen.find(t => t.id === entry.transversalId);
+    const thema = themen.find(t => t.id === entry.themaId);
+
+    return (
+      <div className="bg-white border rounded-lg p-4 mb-3 shadow-sm" style={{ borderLeftColor: tt?.color || '#7C3AED', borderLeftWidth: 4 }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4" style={{ color: tt?.color || '#7C3AED' }} />
+              <span className="text-xs font-medium" style={{ color: tt?.color || '#7C3AED' }}>Transversales Thema</span>
+              {thema && (
+                <span className="text-xs text-gray-400">• Thema {thema.order}</span>
+              )}
+            </div>
+            <p className="text-sm font-medium text-gray-800">{tt?.label}</p>
+
+            <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
+              <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
+              <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
+              {entry.createdAt && (
+                <span className="text-gray-400">
+                  {entry.createdAt.toLocaleDateString('de-CH')}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button
+            onClick={() => onDelete(entry.id)}
+            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 export default function LearnerPracticeEBA() {
   const { signOut, userData, currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState('ueben'); // ueben | zirkularitaet
+  const [activeTab, setActiveTab] = useState('ueben'); // ueben | eintraege | zirkularitaet
   const [activeLehrjahr, setActiveLehrjahr] = useState(1);
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState([]);
 
-  // Load entries
+  // Load entries - ohne orderBy um Index-Fehler zu vermeiden
   const loadEntries = async () => {
     if (!currentUser) return;
     setLoading(true);
     try {
       const q = query(
         collection(db, 'practiceEntriesEBA'),
-        where('learnerId', '==', currentUser.uid),
-        orderBy('createdAt', 'desc')
+        where('learnerId', '==', currentUser.uid)
       );
       const snap = await getDocs(q);
       const data = snap.docs.map(d => ({
@@ -664,9 +865,25 @@ export default function LearnerPracticeEBA() {
         ...d.data(),
         createdAt: d.data().createdAt?.toDate?.() || null
       }));
+      // Sortiere lokal nach createdAt (neueste zuerst)
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setEntries(data);
     } catch (err) {
       console.error('Error loading entries:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete entry
+  const handleDeleteEntry = async (entryId) => {
+    if (!confirm('Eintrag wirklich löschen?')) return;
+    setLoading(true);
+    try {
+      await deleteDoc(doc(db, 'practiceEntriesEBA', entryId));
+      await loadEntries();
+    } catch (err) {
+      alert('Fehler: ' + (err?.message || String(err)));
     } finally {
       setLoading(false);
     }
@@ -774,6 +991,17 @@ export default function LearnerPracticeEBA() {
             Üben erfassen
           </button>
           <button
+            onClick={() => setActiveTab('eintraege')}
+            className={`px-4 py-2 rounded-lg border flex items-center gap-2 transition-colors ${
+              activeTab === 'eintraege'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white hover:bg-gray-50'
+            }`}
+          >
+            <ListChecks className="w-4 h-4" />
+            Meine Einträge ({entries.length})
+          </button>
+          <button
             onClick={() => setActiveTab('zirkularitaet')}
             className={`px-4 py-2 rounded-lg border flex items-center gap-2 transition-colors ${
               activeTab === 'zirkularitaet'
@@ -848,6 +1076,39 @@ export default function LearnerPracticeEBA() {
               </div>
             )}
           </>
+        )}
+
+        {/* Meine Einträge Tab */}
+        {activeTab === 'eintraege' && (
+          <div className="bg-white rounded-2xl shadow-sm border p-6">
+            <h2 className="text-lg font-bold mb-4">Meine Einträge</h2>
+
+            {loading ? (
+              <p className="text-gray-500">Lade...</p>
+            ) : entries.length === 0 ? (
+              <p className="text-gray-500">Noch keine Einträge vorhanden.</p>
+            ) : (
+              <div className="space-y-2">
+                {/* Filter */}
+                <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b">
+                  <span className="text-sm text-gray-500">
+                    {entries.filter(e => e.type === 'kompetenz').length} Kompetenzen •{' '}
+                    {entries.filter(e => e.type === 'schluesselkompetenz').length} Schlüsselkompetenzen •{' '}
+                    {entries.filter(e => e.type === 'transversal').length} Transversale
+                  </span>
+                </div>
+
+                {/* Einträge */}
+                {entries.map(entry => (
+                  <EntryDetailCard
+                    key={entry.id}
+                    entry={entry}
+                    onDelete={handleDeleteEntry}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Zirkularität Tab */}
