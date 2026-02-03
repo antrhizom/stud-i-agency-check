@@ -329,9 +329,9 @@ const ApprenticeDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              <img src="/logo.png" alt="Logo" className="h-12 w-12 object-contain" />
+              <img src="/LogoABU_DNA.png" alt="ABU Logo" className="h-12 w-12 object-contain" />
               <div>
-                <h1 className="text-xl font-bold">Carli-Check</h1>
+                <h1 className="text-xl font-bold">stud-i-agency-chek</h1>
                 <p className="text-sm text-gray-600">Willkommen, {userData?.name || 'Lernender'}</p>
               </div>
             </div>

@@ -230,9 +230,12 @@ export default function TeacherDashboard() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">stud-i-agency-chek</h1>
-            <p className="text-sm text-gray-600">Lehrperson ABU · {userData?.displayName || userData?.name || ''}</p>
+          <div className="flex items-center gap-3">
+            <img src="/LogoABU_DNA.png" alt="ABU Logo" className="h-10 w-10 object-contain" />
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">stud-i-agency-chek</h1>
+              <p className="text-sm text-gray-600">Lehrperson ABU · {userData?.displayName || userData?.name || ''}</p>
+            </div>
           </div>
           <button
             onClick={signOut}
