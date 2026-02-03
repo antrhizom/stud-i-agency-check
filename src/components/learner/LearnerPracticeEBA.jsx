@@ -323,23 +323,44 @@ const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus
         );
       })}
 
-      {/* Optionale Sprachmodi */}
+      {/* Optionale Sprachmodi - auch klickbar */}
       {kompetenz.sprachmodiOptional && kompetenz.sprachmodiOptional.length > 0 && (
-        <div className="mt-3 p-2 bg-purple-50 rounded-lg">
+        <div className="mt-3">
           <p className="text-xs text-purple-600 font-medium mb-2">
             <Sparkles className="w-3 h-3 inline mr-1" />
-            Optionale Sprachmodi:
+            Weitere Sprachmodi (optional):
           </p>
-          <div className="flex flex-wrap gap-1">
-            {kompetenz.sprachmodiOptional.map(modusId => {
-              const modus = getSprachmodusById(modusId);
-              return (
-                <span key={modusId} className="px-2 py-0.5 text-xs bg-white rounded border text-purple-600">
-                  {modus?.label || modusId}
-                </span>
-              );
-            })}
-          </div>
+          {kompetenz.sprachmodiOptional.map((modusId, idx) => {
+            const modus = getSprachmodusById(modusId);
+            const optionalCount = existingEntries.filter(e =>
+              e.type === 'sprachmodus' &&
+              e.kompetenzId === kompetenz.id &&
+              e.modus === modusId &&
+              e.isOptional === true
+            ).length;
+            return (
+              <ClickableInhalt
+                key={`sprache-opt-${modusId}`}
+                type="sprachmodus"
+                label={modus?.label || modusId}
+                code={modus?.code}
+                inhalt="(Optionaler Sprachmodus - freiwillig)"
+                bgColor="#F3E8FF"
+                textColor="#7C3AED"
+                icon={MessageSquare}
+                entryCount={optionalCount}
+                onSave={(formData) => onSaveSprachmodus({
+                  kompetenzId: kompetenz.id,
+                  themaId: thema.id,
+                  modus: modusId,
+                  inhalt: `Optionaler Sprachmodus: ${modus?.label || modusId}`,
+                  inhaltIdx: idx,
+                  isOptional: true,
+                  ...formData
+                })}
+              />
+            );
+          })}
         </div>
       )}
 

@@ -6,7 +6,8 @@ import {
   gesellschaftsinhalte,
   getSchluesselkompetenzById,
   getSprachmodusById,
-  getGesellschaftsinhaltById
+  getGesellschaftsinhaltById,
+  uiColors
 } from '../../data/curriculumEBA';
 import {
   BarChart3,
@@ -14,29 +15,12 @@ import {
   Target,
   BookOpen,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  CheckCircle2,
+  Circle,
+  AlertCircle,
+  Users
 } from 'lucide-react';
-
-// ============================================
-// FARBEN gemäss Vorgabe
-// ============================================
-const ZIRK_COLORS = {
-  sprachmodi: {
-    bg: '#E8F8E8',
-    text: '#228B22',
-    border: '#B8E8B8'
-  },
-  schluessel: {
-    bg: '#FFFDE6',
-    text: '#B8860B',
-    border: '#FFE68A'
-  },
-  gesellschaft: {
-    bg: '#E6F5FC',
-    text: '#009EE0',
-    border: '#B3E0F2'
-  }
-};
 
 // Themenfarben für die Balken
 const THEMA_COLORS = {
@@ -51,95 +35,277 @@ const THEMA_COLORS = {
 };
 
 // ============================================
-// ZIRKULARITÄTS-BALKEN KOMPONENTE
+// KOMPETENZ STATUS BADGE
 // ============================================
-const ZirkularitaetsBalken = ({ label, themenDaten, colorScheme }) => {
-  // themenDaten ist ein Array von { themaId, runde (R1, R2, etc.), count }
-  const maxRunden = 3; // R1, R2, R3
-
+const StatusBadge = ({ count, required = 1 }) => {
+  if (count >= required) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+        <CheckCircle2 className="w-3 h-3" />
+        {count}× geübt
+      </span>
+    );
+  }
+  if (count > 0) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">
+        <AlertCircle className="w-3 h-3" />
+        {count}× (noch üben)
+      </span>
+    );
+  }
   return (
-    <div className="mb-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm font-medium" style={{ color: colorScheme.text }}>
-          {label}
-        </span>
-      </div>
-      <div className="flex gap-1 h-8 rounded-lg overflow-hidden" style={{ backgroundColor: colorScheme.bg }}>
-        {themen.map(thema => {
-          const data = themenDaten.find(d => d.themaId === thema.id);
-          if (!data) {
-            return (
-              <div
-                key={thema.id}
-                className="flex-1 flex items-center justify-center text-xs opacity-30"
-                title={`${thema.title}: nicht behandelt`}
-              >
-                T{thema.order}
-              </div>
-            );
-          }
-
-          const intensity = data.count > 0 ? Math.min(1, 0.3 + (data.count * 0.2)) : 0.5;
-
-          return (
-            <div
-              key={thema.id}
-              className="flex-1 flex items-center justify-center text-xs font-medium text-white relative"
-              style={{
-                backgroundColor: THEMA_COLORS[thema.id],
-                opacity: intensity
-              }}
-              title={`${thema.title}: ${data.runde} (${data.count}× geübt)`}
-            >
-              <span className="absolute inset-0 flex items-center justify-center">
-                {data.runde}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex gap-1 mt-1">
-        {themen.map(thema => (
-          <div key={thema.id} className="flex-1 text-center text-[10px] text-gray-500">
-            T{thema.order}
-          </div>
-        ))}
-      </div>
-    </div>
+    <span className="flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+      <Circle className="w-3 h-3" />
+      offen
+    </span>
   );
 };
 
 // ============================================
-// ACCORDION FÜR BEREICHE
+// THEMA DETAIL CARD
 // ============================================
-const BereichAccordion = ({ title, icon, colorScheme, children, defaultOpen = false }) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+const ThemaDetailCard = ({ thema, entries }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Berechne Statistiken für dieses Thema
+  const themaStats = useMemo(() => {
+    const themaEntries = entries.filter(e => e.themaId === thema.id);
+
+    // Gesellschaft
+    const gesellschaftStats = [];
+    thema.lebensbezuege.forEach(lb => {
+      lb.kompetenzen.forEach(komp => {
+        komp.gesellschaft.forEach((g, idx) => {
+          const count = themaEntries.filter(e =>
+            e.type === 'gesellschaft' &&
+            e.kompetenzId === komp.id &&
+            e.bereich === g.bereich
+          ).length;
+          gesellschaftStats.push({
+            kompetenzId: komp.id,
+            kompetenzText: komp.text,
+            lebensbezug: lb.title,
+            bereich: g.bereich,
+            bereichLabel: getGesellschaftsinhaltById(g.bereich)?.label || g.bereich,
+            inhalt: g.inhalt,
+            count
+          });
+        });
+      });
+    });
+
+    // Sprachmodi
+    const sprachmodiStats = [];
+    thema.lebensbezuege.forEach(lb => {
+      lb.kompetenzen.forEach(komp => {
+        // Pflicht-Sprachmodi
+        komp.sprachmpiPflicht.forEach((sp, idx) => {
+          const count = themaEntries.filter(e =>
+            e.type === 'sprachmodus' &&
+            e.kompetenzId === komp.id &&
+            e.modus === sp.modus
+          ).length;
+          sprachmodiStats.push({
+            kompetenzId: komp.id,
+            kompetenzText: komp.text,
+            lebensbezug: lb.title,
+            modus: sp.modus,
+            modusLabel: getSprachmodusById(sp.modus)?.label || sp.modus,
+            modusCode: getSprachmodusById(sp.modus)?.code,
+            inhalt: sp.inhalt,
+            isPflicht: true,
+            count
+          });
+        });
+        // Optionale Sprachmodi
+        if (komp.sprachmodiOptional) {
+          komp.sprachmodiOptional.forEach(modusId => {
+            const count = themaEntries.filter(e =>
+              e.type === 'sprachmodus' &&
+              e.kompetenzId === komp.id &&
+              e.modus === modusId &&
+              e.isOptional === true
+            ).length;
+            sprachmodiStats.push({
+              kompetenzId: komp.id,
+              kompetenzText: komp.text,
+              lebensbezug: lb.title,
+              modus: modusId,
+              modusLabel: getSprachmodusById(modusId)?.label || modusId,
+              modusCode: getSprachmodusById(modusId)?.code,
+              inhalt: '(Optional)',
+              isPflicht: false,
+              count
+            });
+          });
+        }
+      });
+    });
+
+    // Schlüsselkompetenzen
+    const schluesselStats = thema.schluesselkompetenzen.map(skId => {
+      const sk = getSchluesselkompetenzById(skId);
+      const count = themaEntries.filter(e =>
+        e.type === 'schluesselkompetenz' &&
+        e.schluesselkompetenzId === skId
+      ).length;
+      return {
+        id: skId,
+        code: sk?.code,
+        label: sk?.label,
+        count
+      };
+    });
+
+    // Zusammenfassung
+    const totalGesellschaft = gesellschaftStats.length;
+    const doneGesellschaft = gesellschaftStats.filter(s => s.count > 0).length;
+    const totalSprachmodi = sprachmodiStats.filter(s => s.isPflicht).length;
+    const doneSprachmodi = sprachmodiStats.filter(s => s.isPflicht && s.count > 0).length;
+    const totalSchluessel = schluesselStats.length;
+    const doneSchluessel = schluesselStats.filter(s => s.count > 0).length;
+
+    return {
+      gesellschaftStats,
+      sprachmodiStats,
+      schluesselStats,
+      summary: {
+        gesellschaft: { done: doneGesellschaft, total: totalGesellschaft },
+        sprachmodi: { done: doneSprachmodi, total: totalSprachmodi },
+        schluessel: { done: doneSchluessel, total: totalSchluessel }
+      }
+    };
+  }, [thema, entries]);
+
+  const totalDone = themaStats.summary.gesellschaft.done +
+                    themaStats.summary.sprachmodi.done +
+                    themaStats.summary.schluessel.done;
+  const totalRequired = themaStats.summary.gesellschaft.total +
+                        themaStats.summary.sprachmodi.total +
+                        themaStats.summary.schluessel.total;
+  const percentage = totalRequired > 0 ? Math.round((totalDone / totalRequired) * 100) : 0;
 
   return (
-    <div
-      className="border rounded-lg overflow-hidden mb-4"
-      style={{ borderColor: colorScheme.border }}
-    >
+    <div className="border rounded-lg overflow-hidden mb-3">
+      {/* Header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 flex items-center justify-between"
-        style={{ backgroundColor: colorScheme.bg }}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50"
+        style={{ backgroundColor: THEMA_COLORS[thema.id] + '10' }}
       >
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="font-semibold" style={{ color: colorScheme.text }}>
-            {title}
-          </span>
+        <div className="flex items-center gap-3">
+          <div
+            className="w-4 h-4 rounded"
+            style={{ backgroundColor: THEMA_COLORS[thema.id] }}
+          />
+          <div className="text-left">
+            <span className="font-medium text-gray-900">
+              Thema {thema.order}: {thema.title}
+            </span>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {themaStats.summary.gesellschaft.done}/{themaStats.summary.gesellschaft.total} Gesellschaft •
+              {themaStats.summary.sprachmodi.done}/{themaStats.summary.sprachmodi.total} Sprache •
+              {themaStats.summary.schluessel.done}/{themaStats.summary.schluessel.total} Schlüssel
+            </div>
+          </div>
         </div>
-        {isOpen ? (
-          <ChevronDown className="w-5 h-5" style={{ color: colorScheme.text }} />
-        ) : (
-          <ChevronRight className="w-5 h-5" style={{ color: colorScheme.text }} />
-        )}
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <span
+              className="text-lg font-bold"
+              style={{ color: THEMA_COLORS[thema.id] }}
+            >
+              {percentage}%
+            </span>
+          </div>
+          {isOpen ? (
+            <ChevronDown className="w-5 h-5 text-gray-400" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          )}
+        </div>
       </button>
+
+      {/* Details */}
       {isOpen && (
-        <div className="p-4 bg-white">
-          {children}
+        <div className="p-4 bg-white border-t space-y-4">
+          {/* Gesellschaftsinhalte */}
+          <div>
+            <h4 className="text-sm font-medium mb-2 flex items-center gap-2" style={{ color: uiColors.gesellschaft.text }}>
+              <BookOpen className="w-4 h-4" />
+              Gesellschaftsinhalte ({themaStats.summary.gesellschaft.done}/{themaStats.summary.gesellschaft.total})
+            </h4>
+            <div className="space-y-1">
+              {themaStats.gesellschaftStats.map((g, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start justify-between gap-2 p-2 rounded text-xs"
+                  style={{ backgroundColor: g.count > 0 ? '#DCFCE7' : uiColors.gesellschaft.bg }}
+                >
+                  <div className="flex-1">
+                    <span className="font-medium" style={{ color: uiColors.gesellschaft.text }}>
+                      {g.bereichLabel}
+                    </span>
+                    <p className="text-gray-600 mt-0.5">{g.inhalt}</p>
+                  </div>
+                  <StatusBadge count={g.count} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Sprachmodi */}
+          <div>
+            <h4 className="text-sm font-medium mb-2 flex items-center gap-2" style={{ color: uiColors.sprache.text }}>
+              <MessageSquare className="w-4 h-4" />
+              Sprachmodi ({themaStats.summary.sprachmodi.done}/{themaStats.summary.sprachmodi.total} Pflicht)
+            </h4>
+            <div className="space-y-1">
+              {themaStats.sprachmodiStats.map((sp, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start justify-between gap-2 p-2 rounded text-xs"
+                  style={{
+                    backgroundColor: sp.count > 0 ? '#DCFCE7' : (sp.isPflicht ? uiColors.sprache.bg : '#F3E8FF'),
+                    opacity: sp.isPflicht ? 1 : 0.8
+                  }}
+                >
+                  <div className="flex-1">
+                    <span className="font-medium" style={{ color: sp.isPflicht ? uiColors.sprache.text : '#7C3AED' }}>
+                      {sp.modusLabel} {sp.modusCode && `(${sp.modusCode})`}
+                      {!sp.isPflicht && <span className="ml-1 text-purple-400">[optional]</span>}
+                    </span>
+                    <p className="text-gray-600 mt-0.5">{sp.inhalt}</p>
+                  </div>
+                  <StatusBadge count={sp.count} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Schlüsselkompetenzen */}
+          <div>
+            <h4 className="text-sm font-medium mb-2 flex items-center gap-2" style={{ color: uiColors.schluessel.text }}>
+              <Target className="w-4 h-4" />
+              Schlüsselkompetenzen ({themaStats.summary.schluessel.done}/{themaStats.summary.schluessel.total})
+            </h4>
+            <div className="space-y-1">
+              {themaStats.schluesselStats.map((sk, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start justify-between gap-2 p-2 rounded text-xs"
+                  style={{ backgroundColor: sk.count > 0 ? '#DCFCE7' : uiColors.schluessel.bg }}
+                >
+                  <div className="flex-1">
+                    <span className="font-medium text-gray-500">{sk.code}</span>
+                    <p className="text-gray-800">{sk.label}</p>
+                  </div>
+                  <StatusBadge count={sk.count} />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -153,7 +319,7 @@ const Legende = () => {
   return (
     <div className="bg-gray-50 rounded-lg p-4 mb-6">
       <h4 className="text-sm font-semibold text-gray-700 mb-3">Legende</h4>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {themen.map(thema => (
           <div key={thema.id} className="flex items-center gap-2">
             <div
@@ -166,20 +332,24 @@ const Legende = () => {
           </div>
         ))}
       </div>
-      <div className="mt-4 pt-4 border-t">
-        <div className="flex flex-wrap gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono bg-gray-200 px-2 py-0.5 rounded">R1</span>
-            <span className="text-xs text-gray-600">= erste Behandlung</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono bg-gray-200 px-2 py-0.5 rounded">R2</span>
-            <span className="text-xs text-gray-600">= Wiederholung/Vertiefung</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono bg-gray-200 px-2 py-0.5 rounded">R3</span>
-            <span className="text-xs text-gray-600">= weitere Vertiefung</span>
-          </div>
+      <div className="mt-4 pt-4 border-t flex flex-wrap gap-4">
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+            <CheckCircle2 className="w-3 h-3" />
+          </span>
+          <span className="text-xs text-gray-600">= erfüllt</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">
+            <AlertCircle className="w-3 h-3" />
+          </span>
+          <span className="text-xs text-gray-600">= in Arbeit</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            <Circle className="w-3 h-3" />
+          </span>
+          <span className="text-xs text-gray-600">= offen</span>
         </div>
       </div>
     </div>
@@ -190,54 +360,11 @@ const Legende = () => {
 // HAUPTKOMPONENTE
 // ============================================
 export default function ZirkularitaetDashboard({ entries = [] }) {
-  // Berechne Zirkularitätsdaten aus den Einträgen und dem Curriculum
-  const zirkularitaetsDaten = useMemo(() => {
-    // Gesellschaftsinhalte
-    const gesellschaftDaten = gesellschaftsinhalte.map(gi => {
-      const themenDaten = themen.map(thema => {
-        const zirk = thema.zirkularitaet?.gesellschaft?.[gi.id];
-        const count = entries.filter(e =>
-          e.themaId === thema.id &&
-          e.type === 'kompetenz'
-        ).length;
-        return zirk ? { themaId: thema.id, runde: zirk, count } : null;
-      }).filter(Boolean);
-      return { ...gi, themenDaten };
-    });
-
-    // Sprachmodi
-    const sprachmodiDaten = sprachmodi.map(sm => {
-      const themenDaten = themen.map(thema => {
-        const zirk = thema.zirkularitaet?.sprachmodi?.[sm.id];
-        const count = entries.filter(e =>
-          e.themaId === thema.id &&
-          (e.type === 'kompetenz' || e.optionalSprachmodi?.includes(sm.id))
-        ).length;
-        return zirk ? { themaId: thema.id, runde: zirk, count } : null;
-      }).filter(Boolean);
-      return { ...sm, themenDaten };
-    });
-
-    // Schlüsselkompetenzen
-    const schluesselDaten = schluesselkompetenzen.map(sk => {
-      const themenDaten = themen.map(thema => {
-        const zirk = thema.zirkularitaet?.schluessel?.[sk.id];
-        const count = entries.filter(e =>
-          e.themaId === thema.id &&
-          e.schluesselkompetenzId === sk.id
-        ).length;
-        return zirk ? { themaId: thema.id, runde: zirk, count } : null;
-      }).filter(Boolean);
-      return { ...sk, themenDaten };
-    });
-
-    return { gesellschaftDaten, sprachmodiDaten, schluesselDaten };
-  }, [entries]);
-
   // Statistiken
   const stats = useMemo(() => {
     const total = entries.length;
-    const kompetenzEntries = entries.filter(e => e.type === 'kompetenz').length;
+    const gesellschaftEntries = entries.filter(e => e.type === 'gesellschaft').length;
+    const sprachmodiEntries = entries.filter(e => e.type === 'sprachmodus').length;
     const schluesselEntries = entries.filter(e => e.type === 'schluesselkompetenz').length;
     const transversalEntries = entries.filter(e => e.type === 'transversal').length;
 
@@ -246,7 +373,7 @@ export default function ZirkularitaetDashboard({ entries = [] }) {
       return { ...thema, count };
     });
 
-    return { total, kompetenzEntries, schluesselEntries, transversalEntries, themenStats };
+    return { total, gesellschaftEntries, sprachmodiEntries, schluesselEntries, transversalEntries, themenStats };
   }, [entries]);
 
   return (
@@ -261,17 +388,21 @@ export default function ZirkularitaetDashboard({ entries = [] }) {
         <Legende />
 
         {/* Statistik-Karten */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="bg-gray-50 rounded-lg p-4 text-center">
             <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
             <div className="text-xs text-gray-500">Einträge gesamt</div>
           </div>
-          <div className="bg-blue-50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">{stats.kompetenzEntries}</div>
-            <div className="text-xs text-gray-500">Kompetenzen</div>
+          <div className="rounded-lg p-4 text-center" style={{ backgroundColor: uiColors.gesellschaft.bg }}>
+            <div className="text-2xl font-bold" style={{ color: uiColors.gesellschaft.text }}>{stats.gesellschaftEntries}</div>
+            <div className="text-xs text-gray-500">Gesellschaft</div>
           </div>
-          <div className="bg-amber-50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-amber-600">{stats.schluesselEntries}</div>
+          <div className="rounded-lg p-4 text-center" style={{ backgroundColor: uiColors.sprache.bg }}>
+            <div className="text-2xl font-bold" style={{ color: uiColors.sprache.text }}>{stats.sprachmodiEntries}</div>
+            <div className="text-xs text-gray-500">Sprachmodi</div>
+          </div>
+          <div className="rounded-lg p-4 text-center" style={{ backgroundColor: uiColors.schluessel.bg }}>
+            <div className="text-2xl font-bold" style={{ color: uiColors.schluessel.text }}>{stats.schluesselEntries}</div>
             <div className="text-xs text-gray-500">Schlüsselkomp.</div>
           </div>
           <div className="bg-purple-50 rounded-lg p-4 text-center">
@@ -303,56 +434,24 @@ export default function ZirkularitaetDashboard({ entries = [] }) {
         </div>
       </div>
 
-      {/* Gesellschaftsinhalte */}
-      <BereichAccordion
-        title="Zirkularität der Gesellschaftsinhalte"
-        icon={<BookOpen className="w-5 h-5" style={{ color: ZIRK_COLORS.gesellschaft.text }} />}
-        colorScheme={ZIRK_COLORS.gesellschaft}
-        defaultOpen={true}
-      >
-        {zirkularitaetsDaten.gesellschaftDaten.map(gi => (
-          <ZirkularitaetsBalken
-            key={gi.id}
-            label={gi.label}
-            themenDaten={gi.themenDaten}
-            colorScheme={ZIRK_COLORS.gesellschaft}
-          />
-        ))}
-      </BereichAccordion>
+      {/* Detailansicht pro Thema */}
+      <div className="bg-white rounded-2xl shadow-sm border p-6">
+        <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <Users className="w-5 h-5 text-gray-600" />
+          Kompetenzen pro Thema
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Klicke auf ein Thema um zu sehen, welche Kompetenzen erfüllt sind und wo du noch üben kannst.
+        </p>
 
-      {/* Sprachmodi */}
-      <BereichAccordion
-        title="Zirkularität der Sprachmodi"
-        icon={<MessageSquare className="w-5 h-5" style={{ color: ZIRK_COLORS.sprachmodi.text }} />}
-        colorScheme={ZIRK_COLORS.sprachmodi}
-        defaultOpen={false}
-      >
-        {zirkularitaetsDaten.sprachmodiDaten.map(sm => (
-          <ZirkularitaetsBalken
-            key={sm.id}
-            label={sm.label}
-            themenDaten={sm.themenDaten}
-            colorScheme={ZIRK_COLORS.sprachmodi}
+        {themen.map(thema => (
+          <ThemaDetailCard
+            key={thema.id}
+            thema={thema}
+            entries={entries}
           />
         ))}
-      </BereichAccordion>
-
-      {/* Schlüsselkompetenzen */}
-      <BereichAccordion
-        title="Zirkularität der Schlüsselkompetenzen"
-        icon={<Target className="w-5 h-5" style={{ color: ZIRK_COLORS.schluessel.text }} />}
-        colorScheme={ZIRK_COLORS.schluessel}
-        defaultOpen={false}
-      >
-        {zirkularitaetsDaten.schluesselDaten.map(sk => (
-          <ZirkularitaetsBalken
-            key={sk.id}
-            label={`${sk.code}: ${sk.label.substring(0, 50)}${sk.label.length > 50 ? '...' : ''}`}
-            themenDaten={sk.themenDaten}
-            colorScheme={ZIRK_COLORS.schluessel}
-          />
-        ))}
-      </BereichAccordion>
+      </div>
     </div>
   );
 }
