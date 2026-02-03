@@ -13,9 +13,18 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { themes, competencies } from '../../data/curriculum';
-import { LogOut, Users, Plus, Copy, Search, MessageSquare } from 'lucide-react';
+import { LogOut, Users, Plus, Copy, Search, MessageSquare, Download } from 'lucide-react';
 
 const CODE_EMAIL_DOMAIN = 'studiagency-check.ch';
+
+// Tier-Namen für anonyme Lernenden-Codes
+const TIER_NAMEN = [
+  'Adler', 'Bär', 'Dachs', 'Eichhörnchen', 'Fuchs', 'Giraffe', 'Hase', 'Igel',
+  'Jaguar', 'Koala', 'Löwe', 'Maus', 'Nashorn', 'Otter', 'Pinguin', 'Qualle',
+  'Reh', 'Schwan', 'Tiger', 'Uhu', 'Vogel', 'Wolf', 'Yak', 'Zebra',
+  'Affe', 'Biber', 'Delfin', 'Elefant', 'Flamingo', 'Gepard', 'Hirsch', 'Kamel',
+  'Leopard', 'Marder', 'Nilpferd', 'Ozelot', 'Papagei', 'Robbe', 'Storch', 'Tukan'
+];
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -46,11 +55,8 @@ export default function TeacherDashboard() {
 
   // UI: Codes
   const [showCodeModal, setShowCodeModal] = useState(false);
-  const [codeMode, setCodeMode] = useState('single'); // single | batch
-  const [learnerName, setLearnerName] = useState('');
-  const [batchNames, setBatchNames] = useState('');
-  const [generated, setGenerated] = useState([]); // [{name, code}]
-  const [copyInfoName, setCopyInfoName] = useState('');
+  const [codeAnzahl, setCodeAnzahl] = useState(10);
+  const [generated, setGenerated] = useState([]); // [{tier, code}]
 
   // UI: Notiz auf Eintrag
   const [noteEntryId, setNoteEntryId] = useState('');
@@ -150,9 +156,7 @@ export default function TeacherDashboard() {
     }
     setShowCodeModal(true);
     setGenerated([]);
-    setLearnerName('');
-    setBatchNames('');
-    setCopyInfoName('');
+    setCodeAnzahl(10);
   };
 
   const createCodes = async () => {
@@ -162,42 +166,49 @@ export default function TeacherDashboard() {
       return;
     }
 
-    const names = codeMode === 'batch'
-      ? batchNames.split('\n').map(s => s.trim()).filter(Boolean)
-      : [learnerName.trim()].filter(Boolean);
+    const anzahl = Math.min(Math.max(1, codeAnzahl), TIER_NAMEN.length);
 
-    if (!names.length) {
-      alert('Bitte Name(n) eingeben.');
-      return;
-    }
+    // Shuffle Tier-Namen und nimm die ersten X
+    const shuffledTiere = [...TIER_NAMEN].sort(() => Math.random() - 0.5);
+    const ausgewaehlteTiere = shuffledTiere.slice(0, anzahl);
 
     const out = [];
-    for (const name of names) {
+    for (const tier of ausgewaehlteTiere) {
       const code = generateCode();
       await addDoc(collection(db, 'learnerCodes'), {
         code,
-        name,
+        name: tier, // Tier als Pseudonym
         teacherId: currentUser.uid,
         classId: selectedClassId,
         used: false,
         userId: null,
         createdAt: Timestamp.now()
       });
-      out.push({ name, code });
+      out.push({ tier, code });
     }
     setGenerated(out);
-    setCopyInfoName(names[0] || '');
+  };
+
+  const downloadCSV = () => {
+    if (!generated.length) return;
+
+    const className = classes.find(c => c.id === selectedClassId)?.name || 'Klasse';
+    const header = 'Tier;Code;Name (ausfüllen)';
+    const rows = generated.map(g => `${g.tier};${g.code};`);
+    const csv = [header, ...rows].join('\n');
+
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Lernenden-Codes_${className}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const copyCode = async (code) => {
     await navigator.clipboard.writeText(code);
     alert('Code kopiert!');
-  };
-
-  const copyInstructions = async (name, code) => {
-    const text = `Hallo ${name}!\n\nDu bist jetzt registriert für stud-i-agency-chek.\n\nDein Code: ${code}\n\nWICHTIG: Dieser Code ist dein dauerhaftes Passwort.\n\nSo geht\'s:\n1. App öffnen (Vercel-URL)\n2. "Als Lernende:r einloggen" klicken\n3. Code eingeben: ${code}\n4. Fertig!\n`;
-    await navigator.clipboard.writeText(text);
-    alert('Anleitung kopiert!');
   };
 
   const startNote = (entry) => {
@@ -388,56 +399,59 @@ export default function TeacherDashboard() {
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-xl font-bold">Lernenden-Codes erstellen</h3>
-                <p className="text-sm text-gray-600">Codes sind dauerhafte Passwörter. Lernende loggen sich via Code ein.</p>
+                <p className="text-sm text-gray-600">Codes werden mit Tier-Pseudonymen generiert. Namen können Sie in der CSV-Datei ergänzen.</p>
               </div>
               <button onClick={() => setShowCodeModal(false)} className="px-3 py-1 border rounded-lg">Schliessen</button>
             </div>
 
             <div className="mt-4 grid md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <label className="text-sm text-gray-600">Klasse</label>
-                <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-
-                <div className="flex gap-2">
-                  <button onClick={() => setCodeMode('single')} className={`flex-1 px-3 py-2 rounded-lg border ${codeMode==='single' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'}`}>Einzeln</button>
-                  <button onClick={() => setCodeMode('batch')} className={`flex-1 px-3 py-2 rounded-lg border ${codeMode==='batch' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'}`}>Batch</button>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm text-gray-600">Klasse</label>
+                  <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
+                    {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
 
-                {codeMode === 'single' ? (
-                  <div>
-                    <label className="text-sm text-gray-600">Name</label>
-                    <input value={learnerName} onChange={(e) => setLearnerName(e.target.value)} className="w-full border rounded-lg px-3 py-2" placeholder="z.B. Max Muster" />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-sm text-gray-600">Namen (1 pro Zeile)</label>
-                    <textarea value={batchNames} onChange={(e) => setBatchNames(e.target.value)} className="w-full border rounded-lg px-3 py-2 h-32" placeholder="Max Muster\nLea Beispiel" />
-                  </div>
-                )}
+                <div>
+                  <label className="text-sm text-gray-600">Anzahl Lernende</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={TIER_NAMEN.length}
+                    value={codeAnzahl}
+                    onChange={(e) => setCodeAnzahl(parseInt(e.target.value) || 1)}
+                    className="w-full border rounded-lg px-3 py-2 text-lg font-medium"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Max. {TIER_NAMEN.length} (ein Tier pro Lernende:r)</p>
+                </div>
 
                 <button onClick={createCodes} className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black">
-                  <Plus className="w-4 h-4 inline mr-1" /> Codes generieren
+                  <Plus className="w-4 h-4 inline mr-1" /> {codeAnzahl} Codes generieren
                 </button>
+
+                {generated.length > 0 && (
+                  <button onClick={downloadCSV} className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                    <Download className="w-4 h-4 inline mr-1" /> CSV herunterladen
+                  </button>
+                )}
               </div>
 
               <div className="space-y-3">
-                <div className="text-sm text-gray-600">Ergebnis</div>
+                <div className="text-sm text-gray-600">Ergebnis ({generated.length} Codes)</div>
                 {generated.length === 0 ? (
                   <div className="text-gray-600 border rounded-xl p-4">Noch keine Codes generiert.</div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
                     {generated.map(g => (
-                      <div key={g.code} className="border rounded-xl p-3">
-                        <div className="font-medium">{g.name}</div>
-                        <div className="flex items-center justify-between gap-2 mt-1">
-                          <div className="font-mono text-lg">{g.code}</div>
-                          <div className="flex gap-2">
-                            <button onClick={() => copyCode(g.code)} className="px-3 py-2 border rounded-lg hover:bg-gray-50"><Copy className="w-4 h-4" /></button>
-                            <button onClick={() => copyInstructions(g.name, g.code)} className="px-3 py-2 border rounded-lg hover:bg-gray-50">Anleitung</button>
-                          </div>
+                      <div key={g.code} className="border rounded-xl p-3 flex items-center justify-between">
+                        <div>
+                          <div className="font-medium">{g.tier}</div>
+                          <div className="font-mono text-sm text-gray-600">{g.code}</div>
                         </div>
+                        <button onClick={() => copyCode(g.code)} className="px-3 py-2 border rounded-lg hover:bg-gray-50">
+                          <Copy className="w-4 h-4" />
+                        </button>
                       </div>
                     ))}
                   </div>
