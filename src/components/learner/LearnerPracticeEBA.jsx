@@ -132,216 +132,104 @@ const Counter = ({ value, onChange, min = 0, max = 99 }) => {
   );
 };
 
-// Kompetenz Card mit Erfassung
-const KompetenzCard = ({ kompetenz, themaId, onSave, existingEntries = [] }) => {
-  const [expanded, setExpanded] = useState(false);
+// Einzelner klickbarer Inhalt mit Erfassungs-Popup
+const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: Icon, onSave, entryCount = 0 }) => {
+  const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     status: 'geuebt',
     howMethod: '',
     howCount: 1,
-    note: '',
-    optionalSprachmodi: []
+    note: ''
   });
 
-  const totalEntries = existingEntries.filter(e => e.kompetenzId === kompetenz.id).length;
-
-  const handleSubmit = () => {
+  const handleSave = () => {
     if (!formData.howMethod) {
       alert('Bitte wähle eine Methode aus.');
       return;
     }
-    onSave({
-      kompetenzId: kompetenz.id,
-      themaId,
-      ...formData
-    });
-    setFormData({
-      status: 'geuebt',
-      howMethod: '',
-      howCount: 1,
-      note: '',
-      optionalSprachmodi: []
-    });
-    setExpanded(false);
-  };
-
-  const toggleOptionalModus = (modusId) => {
-    setFormData(prev => ({
-      ...prev,
-      optionalSprachmodi: prev.optionalSprachmodi.includes(modusId)
-        ? prev.optionalSprachmodi.filter(id => id !== modusId)
-        : [...prev.optionalSprachmodi, modusId]
-    }));
+    onSave(formData);
+    setFormData({ status: 'geuebt', howMethod: '', howCount: 1, note: '' });
+    setShowForm(false);
   };
 
   return (
-    <div className="border rounded-lg p-4 mb-3 bg-white shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1">
-          <p className="text-sm text-gray-800 font-medium">{kompetenz.text}</p>
-
-          {/* Gesellschaftliche Inhalte */}
-          <div className="mt-3">
-            {kompetenz.gesellschaft.map((g, idx) => {
-              const bereichInfo = getGesellschaftsinhaltById(g.bereich);
-              return (
-                <div
-                  key={idx}
-                  className="mt-2 p-2 rounded-lg text-sm"
-                  style={{ backgroundColor: uiColors.gesellschaft.bg }}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <BookOpen className="w-4 h-4" style={{ color: uiColors.gesellschaft.text }} />
-                    <span className="font-medium" style={{ color: uiColors.gesellschaft.text }}>
-                      {bereichInfo?.label || g.bereich}
-                    </span>
-                  </div>
-                  <p className="text-gray-700 text-xs">{g.inhalt}</p>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Sprachmodi Pflicht */}
-          <div className="mt-2">
-            {kompetenz.sprachmpiPflicht.map((sp, idx) => {
-              const modusInfo = getSprachmodusById(sp.modus);
-              return (
-                <div
-                  key={idx}
-                  className="mt-2 p-2 rounded-lg text-sm"
-                  style={{ backgroundColor: uiColors.sprache.bg }}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <MessageSquare className="w-4 h-4" style={{ color: uiColors.sprache.text }} />
-                    <span className="font-medium" style={{ color: uiColors.sprache.text }}>
-                      {modusInfo?.label || sp.modus}
-                    </span>
-                  </div>
-                  <p className="text-gray-700 text-xs">{sp.inhalt}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="flex flex-col items-end gap-2">
-          {totalEntries > 0 && (
-            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">
-              {totalEntries}× geübt
+    <div className="mt-2">
+      <div
+        onClick={() => setShowForm(!showForm)}
+        className="p-3 rounded-lg text-sm cursor-pointer hover:opacity-90 transition-opacity border-2 border-transparent hover:border-gray-300"
+        style={{ backgroundColor: bgColor }}
+      >
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2">
+            <Icon className="w-4 h-4" style={{ color: textColor }} />
+            <span className="font-medium" style={{ color: textColor }}>
+              {label} {code && <span className="text-xs opacity-70">({code})</span>}
             </span>
-          )}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-          >
-            {expanded ? 'Schliessen' : 'Erfassen'}
-          </button>
+          </div>
+          <div className="flex items-center gap-2">
+            {entryCount > 0 && (
+              <span className="px-2 py-0.5 bg-white/70 text-xs rounded-full font-medium" style={{ color: textColor }}>
+                {entryCount}×
+              </span>
+            )}
+            <span className="text-xs px-2 py-1 rounded bg-white/50" style={{ color: textColor }}>
+              {showForm ? '−' : '+'}
+            </span>
+          </div>
         </div>
+        <p className="text-gray-700 text-xs">{inhalt}</p>
       </div>
 
-      {/* Erfassungs-Formular */}
-      {expanded && (
-        <div className="mt-4 pt-4 border-t space-y-4">
-          {/* Optionale Sprachmodi */}
-          {kompetenz.sprachmodiOptional && kompetenz.sprachmodiOptional.length > 0 && (
-            <div>
-              <label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4 text-purple-500" />
-                Zusätzliche Sprachmodi (freiwillig)
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {kompetenz.sprachmodiOptional.map(modusId => {
-                  const modus = getSprachmodusById(modusId);
-                  const isSelected = formData.optionalSprachmodi.includes(modusId);
-                  return (
-                    <button
-                      key={modusId}
-                      type="button"
-                      onClick={() => toggleOptionalModus(modusId)}
-                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
-                        isSelected
-                          ? 'bg-green-100 border-green-400 text-green-700'
-                          : 'bg-white border-gray-300 text-gray-600 hover:border-green-300'
-                      }`}
-                    >
-                      {isSelected && <Check className="w-3 h-3 inline mr-1" />}
-                      {modus?.label || modusId}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
+      {/* Inline Erfassungs-Formular */}
+      {showForm && (
+        <div className="mt-2 p-3 bg-gray-50 rounded-lg border space-y-3">
           {/* Status */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Status</label>
-            <div className="flex gap-2">
-              {STATUS_OPTIONS.map(opt => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, status: opt.id }))}
-                  className={`px-4 py-2 text-sm rounded-lg border transition-colors ${
-                    formData.status === opt.id
-                      ? 'border-blue-500 ring-2 ring-blue-200'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                  style={{ backgroundColor: opt.color }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {STATUS_OPTIONS.map(opt => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, status: opt.id }))}
+                className={`px-3 py-1 text-xs rounded-lg border transition-colors ${
+                  formData.status === opt.id ? 'ring-2 ring-blue-300' : ''
+                }`}
+                style={{ backgroundColor: opt.color }}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
 
-          {/* Wie geübt */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-2">Wie geübt?</label>
+          {/* Wie & Wie oft */}
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex-1 min-w-[150px]">
+              <label className="text-xs text-gray-600 block mb-1">Wie geübt?</label>
               <select
                 value={formData.howMethod}
                 onChange={(e) => setFormData(prev => ({ ...prev, howMethod: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="w-full px-2 py-1.5 border rounded text-xs"
               >
-                <option value="">— auswählen —</option>
+                <option value="">— wählen —</option>
                 {HOW_OPTIONS.map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-2">Wie oft?</label>
+              <label className="text-xs text-gray-600 block mb-1">Wie oft?</label>
               <Counter
                 value={formData.howCount}
                 onChange={(val) => setFormData(prev => ({ ...prev, howCount: val }))}
                 min={1}
-                max={20}
+                max={10}
               />
             </div>
-          </div>
-
-          {/* Notiz */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Notiz (optional)</label>
-            <textarea
-              value={formData.note}
-              onChange={(e) => setFormData(prev => ({ ...prev, note: e.target.value }))}
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-              rows={2}
-              placeholder="Was war schwierig? Was habe ich gelernt?"
-            />
-          </div>
-
-          {/* Speichern */}
-          <div className="flex justify-end">
             <button
               type="button"
-              onClick={handleSubmit}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+              onClick={handleSave}
+              className="px-4 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 font-medium"
             >
-              Eintrag speichern
+              Speichern
             </button>
           </div>
         </div>
@@ -350,118 +238,141 @@ const KompetenzCard = ({ kompetenz, themaId, onSave, existingEntries = [] }) => 
   );
 };
 
-// Schlüsselkompetenzen Section
-const SchluesselkompetenzenSection = ({ thema, entries, onSave }) => {
-  const [expanded, setExpanded] = useState({});
-  const [formData, setFormData] = useState({});
-
-  const toggleExpand = (skId) => {
-    setExpanded(prev => ({ ...prev, [skId]: !prev[skId] }));
+// Kompetenz Card mit klickbaren Einzelinhalten
+const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus, onSaveSchluessel, existingEntries = [] }) => {
+  // Zähle Einträge pro Inhalt
+  const getGesellschaftCount = (bereich, inhaltIdx) => {
+    return existingEntries.filter(e =>
+      e.type === 'gesellschaft' &&
+      e.kompetenzId === kompetenz.id &&
+      e.bereich === bereich &&
+      e.inhaltIdx === inhaltIdx
+    ).length;
   };
 
-  const handleSave = (skId) => {
-    const data = formData[skId] || { howMethod: '', howCount: 1, note: '' };
-    if (!data.howMethod) {
-      alert('Bitte wähle eine Methode aus.');
-      return;
-    }
-    onSave({
-      type: 'schluesselkompetenz',
-      schluesselkompetenzId: skId,
-      themaId: thema.id,
-      ...data
-    });
-    setFormData(prev => ({ ...prev, [skId]: { howMethod: '', howCount: 1, note: '' } }));
-    setExpanded(prev => ({ ...prev, [skId]: false }));
+  const getSprachmodusCount = (modus, inhaltIdx) => {
+    return existingEntries.filter(e =>
+      e.type === 'sprachmodus' &&
+      e.kompetenzId === kompetenz.id &&
+      e.modus === modus &&
+      e.inhaltIdx === inhaltIdx
+    ).length;
+  };
+
+  const getSchluesselCount = (skId) => {
+    return existingEntries.filter(e =>
+      e.type === 'schluesselkompetenz' &&
+      e.kompetenzId === kompetenz.id &&
+      e.schluesselkompetenzId === skId
+    ).length;
   };
 
   return (
-    <div
-      className="p-4 rounded-lg mt-4"
-      style={{ backgroundColor: uiColors.schluessel.bg, borderColor: uiColors.schluessel.border, borderWidth: 1 }}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <Target className="w-5 h-5" style={{ color: uiColors.schluessel.text }} />
-        <h4 className="font-semibold" style={{ color: uiColors.schluessel.text }}>
-          Schlüsselkompetenzen (Pflicht)
-        </h4>
-      </div>
+    <div className="border rounded-lg p-4 mb-3 bg-white shadow-sm">
+      {/* Kompetenz-Text */}
+      <p className="text-sm text-gray-800 font-medium mb-3">{kompetenz.text}</p>
 
-      <div className="space-y-2">
-        {thema.schluesselkompetenzen.map(skId => {
-          const sk = getSchluesselkompetenzById(skId);
-          const skEntries = entries.filter(e => e.schluesselkompetenzId === skId && e.themaId === thema.id);
-          const isExpanded = expanded[skId];
-          const data = formData[skId] || { howMethod: '', howCount: 1, note: '' };
+      {/* Gesellschaftliche Inhalte - klickbar */}
+      {kompetenz.gesellschaft.map((g, idx) => {
+        const bereichInfo = getGesellschaftsinhaltById(g.bereich);
+        return (
+          <ClickableInhalt
+            key={`gesellschaft-${idx}`}
+            type="gesellschaft"
+            label={bereichInfo?.label || g.bereich}
+            inhalt={g.inhalt}
+            bgColor={uiColors.gesellschaft.bg}
+            textColor={uiColors.gesellschaft.text}
+            icon={BookOpen}
+            entryCount={getGesellschaftCount(g.bereich, idx)}
+            onSave={(formData) => onSaveGesellschaft({
+              kompetenzId: kompetenz.id,
+              themaId: thema.id,
+              bereich: g.bereich,
+              inhalt: g.inhalt,
+              inhaltIdx: idx,
+              ...formData
+            })}
+          />
+        );
+      })}
 
-          return (
-            <div key={skId} className="bg-white rounded-lg border p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <span className="text-xs font-mono text-gray-500">{sk?.code}</span>
-                  <p className="text-sm text-gray-800">{sk?.label}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {skEntries.length > 0 && (
-                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
-                      {skEntries.length}×
-                    </span>
-                  )}
-                  <button
-                    onClick={() => toggleExpand(skId)}
-                    className="px-2 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700"
-                  >
-                    {isExpanded ? '−' : '+'}
-                  </button>
-                </div>
-              </div>
+      {/* Sprachmodi Pflicht - klickbar */}
+      {kompetenz.sprachmpiPflicht.map((sp, idx) => {
+        const modusInfo = getSprachmodusById(sp.modus);
+        return (
+          <ClickableInhalt
+            key={`sprache-${idx}`}
+            type="sprachmodus"
+            label={modusInfo?.label || sp.modus}
+            code={modusInfo?.code}
+            inhalt={sp.inhalt}
+            bgColor={uiColors.sprache.bg}
+            textColor={uiColors.sprache.text}
+            icon={MessageSquare}
+            entryCount={getSprachmodusCount(sp.modus, idx)}
+            onSave={(formData) => onSaveSprachmodus({
+              kompetenzId: kompetenz.id,
+              themaId: thema.id,
+              modus: sp.modus,
+              inhalt: sp.inhalt,
+              inhaltIdx: idx,
+              ...formData
+            })}
+          />
+        );
+      })}
 
-              {isExpanded && (
-                <div className="mt-3 pt-3 border-t space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">Wie?</label>
-                      <select
-                        value={data.howMethod}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          [skId]: { ...data, howMethod: e.target.value }
-                        }))}
-                        className="w-full mt-1 px-2 py-1.5 border rounded text-sm"
-                      >
-                        <option value="">— wählen —</option>
-                        {HOW_OPTIONS.map(opt => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">Wie oft?</label>
-                      <div className="mt-1">
-                        <Counter
-                          value={data.howCount}
-                          onChange={(val) => setFormData(prev => ({
-                            ...prev,
-                            [skId]: { ...data, howCount: val }
-                          }))}
-                          min={1}
-                          max={10}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleSave(skId)}
-                    className="w-full py-1.5 bg-amber-600 text-white text-sm rounded hover:bg-amber-700"
-                  >
-                    Speichern
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {/* Optionale Sprachmodi */}
+      {kompetenz.sprachmodiOptional && kompetenz.sprachmodiOptional.length > 0 && (
+        <div className="mt-3 p-2 bg-purple-50 rounded-lg">
+          <p className="text-xs text-purple-600 font-medium mb-2">
+            <Sparkles className="w-3 h-3 inline mr-1" />
+            Optionale Sprachmodi:
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {kompetenz.sprachmodiOptional.map(modusId => {
+              const modus = getSprachmodusById(modusId);
+              return (
+                <span key={modusId} className="px-2 py-0.5 text-xs bg-white rounded border text-purple-600">
+                  {modus?.label || modusId}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Schlüsselkompetenzen des Themas - klickbar */}
+      {thema.schluesselkompetenzen && thema.schluesselkompetenzen.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-medium mb-2" style={{ color: uiColors.schluessel.text }}>
+            <Target className="w-3 h-3 inline mr-1" />
+            Schlüsselkompetenzen (Pflicht):
+          </p>
+          {thema.schluesselkompetenzen.map(skId => {
+            const sk = getSchluesselkompetenzById(skId);
+            return (
+              <ClickableInhalt
+                key={`schluessel-${skId}`}
+                type="schluesselkompetenz"
+                label={sk?.code || skId}
+                inhalt={sk?.label || ''}
+                bgColor={uiColors.schluessel.bg}
+                textColor={uiColors.schluessel.text}
+                icon={Target}
+                entryCount={getSchluesselCount(skId)}
+                onSave={(formData) => onSaveSchluessel({
+                  kompetenzId: kompetenz.id,
+                  themaId: thema.id,
+                  schluesselkompetenzId: skId,
+                  ...formData
+                })}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -588,7 +499,7 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
 };
 
 // Thema Card
-const ThemaCard = ({ thema, entries, onSaveKompetenz, onSaveSchluessel, onSaveTransversal }) => {
+const ThemaCard = ({ thema, entries, onSaveGesellschaft, onSaveSprachmodus, onSaveSchluessel, onSaveTransversal }) => {
   const farben = themenFarben[thema.id] || { bg: '#F3F4F6', text: '#374151' };
 
   return (
@@ -614,20 +525,15 @@ const ThemaCard = ({ thema, entries, onSaveKompetenz, onSaveSchluessel, onSaveTr
               <KompetenzCard
                 key={komp.id}
                 kompetenz={komp}
-                themaId={thema.id}
+                thema={thema}
                 existingEntries={entries}
-                onSave={onSaveKompetenz}
+                onSaveGesellschaft={onSaveGesellschaft}
+                onSaveSprachmodus={onSaveSprachmodus}
+                onSaveSchluessel={onSaveSchluessel}
               />
             ))}
           </Accordion>
         ))}
-
-        {/* Schlüsselkompetenzen */}
-        <SchluesselkompetenzenSection
-          thema={thema}
-          entries={entries}
-          onSave={onSaveSchluessel}
-        />
 
         {/* Transversale Themen */}
         <TransversaleThemenSection
@@ -661,97 +567,69 @@ const findKompetenzById = (kompetenzId) => {
 const EntryDetailCard = ({ entry, onDelete }) => {
   const statusLabel = STATUS_OPTIONS.find(s => s.id === entry.status)?.label || entry.status;
   const statusColor = STATUS_OPTIONS.find(s => s.id === entry.status)?.color || '#F3F4F6';
+  const thema = themen.find(t => t.id === entry.themaId);
 
-  // Kompetenz-Eintrag
-  if (entry.type === 'kompetenz' && entry.kompetenzId) {
+  // Gesellschaft-Eintrag
+  if (entry.type === 'gesellschaft' && entry.kompetenzId) {
     const found = findKompetenzById(entry.kompetenzId);
-    if (!found) return null;
-    const { kompetenz, thema, lebensbezug } = found;
+    const bereichInfo = getGesellschaftsinhaltById(entry.bereich);
 
     return (
-      <div className="bg-white border rounded-lg p-4 mb-3 shadow-sm">
+      <div className="bg-white border rounded-lg p-4 mb-3 shadow-sm" style={{ borderLeftColor: uiColors.gesellschaft.text, borderLeftWidth: 4 }}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
-            {/* Thema & Lebensbezug */}
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: thema.color }} />
-              <span className="text-xs font-medium text-gray-500">
-                Thema {thema.order}: {thema.title}
-              </span>
+              <BookOpen className="w-4 h-4" style={{ color: uiColors.gesellschaft.text }} />
+              <span className="text-xs font-medium" style={{ color: uiColors.gesellschaft.text }}>Gesellschaftsinhalt</span>
+              {thema && <span className="text-xs text-gray-400">• Thema {thema.order}</span>}
             </div>
-            <p className="text-xs text-gray-400 mb-2">{lebensbezug.title}</p>
+            <p className="text-xs font-medium" style={{ color: uiColors.gesellschaft.text }}>{bereichInfo?.label || entry.bereich}</p>
+            <p className="text-sm text-gray-800 mt-1">{entry.inhalt}</p>
+            {found && <p className="text-xs text-gray-400 mt-2">Kompetenz: {found.kompetenz.text.substring(0, 80)}...</p>}
 
-            {/* Kompetenz */}
-            <p className="text-sm font-medium text-gray-800 mb-3">{kompetenz.text}</p>
-
-            {/* Gesellschaftliche Inhalte */}
-            {kompetenz.gesellschaft.map((g, idx) => {
-              const bereichInfo = getGesellschaftsinhaltById(g.bereich);
-              return (
-                <div key={idx} className="p-2 rounded-lg text-xs mb-2" style={{ backgroundColor: uiColors.gesellschaft.bg }}>
-                  <div className="flex items-center gap-1 mb-1">
-                    <BookOpen className="w-3 h-3" style={{ color: uiColors.gesellschaft.text }} />
-                    <span className="font-medium" style={{ color: uiColors.gesellschaft.text }}>
-                      {bereichInfo?.label || g.bereich}
-                    </span>
-                  </div>
-                  <p className="text-gray-700">{g.inhalt}</p>
-                </div>
-              );
-            })}
-
-            {/* Sprachmodi Pflicht */}
-            {kompetenz.sprachmpiPflicht.map((sp, idx) => {
-              const modusInfo = getSprachmodusById(sp.modus);
-              return (
-                <div key={idx} className="p-2 rounded-lg text-xs mb-2" style={{ backgroundColor: uiColors.sprache.bg }}>
-                  <div className="flex items-center gap-1 mb-1">
-                    <MessageSquare className="w-3 h-3" style={{ color: uiColors.sprache.text }} />
-                    <span className="font-medium" style={{ color: uiColors.sprache.text }}>
-                      {modusInfo?.label || sp.modus} ({modusInfo?.code})
-                    </span>
-                  </div>
-                  <p className="text-gray-700">{sp.inhalt}</p>
-                </div>
-              );
-            })}
-
-            {/* Optionale Sprachmodi falls gewählt */}
-            {entry.optionalSprachmodi && entry.optionalSprachmodi.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                <span className="text-xs text-gray-500">+ Zusätzlich:</span>
-                {entry.optionalSprachmodi.map(modusId => {
-                  const modus = getSprachmodusById(modusId);
-                  return (
-                    <span key={modusId} className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
-                      {modus?.label || modusId}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Erfassungsdetails */}
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
               <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
               <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
-              {entry.createdAt && (
-                <span className="text-gray-400">
-                  {entry.createdAt.toLocaleDateString('de-CH')}
-                </span>
-              )}
+              {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
-
-            {entry.note && (
-              <p className="mt-2 text-xs text-gray-600 italic bg-gray-50 p-2 rounded">{entry.note}</p>
-            )}
           </div>
+          <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-          <button
-            onClick={() => onDelete(entry.id)}
-            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-          >
+  // Sprachmodus-Eintrag
+  if (entry.type === 'sprachmodus' && entry.kompetenzId) {
+    const found = findKompetenzById(entry.kompetenzId);
+    const modusInfo = getSprachmodusById(entry.modus);
+
+    return (
+      <div className="bg-white border rounded-lg p-4 mb-3 shadow-sm" style={{ borderLeftColor: uiColors.sprache.text, borderLeftWidth: 4 }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare className="w-4 h-4" style={{ color: uiColors.sprache.text }} />
+              <span className="text-xs font-medium" style={{ color: uiColors.sprache.text }}>Sprachmodus</span>
+              {thema && <span className="text-xs text-gray-400">• Thema {thema.order}</span>}
+            </div>
+            <p className="text-xs font-medium" style={{ color: uiColors.sprache.text }}>
+              {modusInfo?.label || entry.modus} {modusInfo?.code && `(${modusInfo.code})`}
+            </p>
+            <p className="text-sm text-gray-800 mt-1">{entry.inhalt}</p>
+            {found && <p className="text-xs text-gray-400 mt-2">Kompetenz: {found.kompetenz.text.substring(0, 80)}...</p>}
+
+            <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
+              <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
+              <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
+              <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
+              {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
+            </div>
+          </div>
+          <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
@@ -893,8 +771,8 @@ export default function LearnerPracticeEBA() {
     loadEntries();
   }, [currentUser]);
 
-  // Save handlers
-  const handleSaveKompetenz = async (data) => {
+  // Generischer Save-Handler
+  const saveEntry = async (data) => {
     if (!currentUser) return;
     setLoading(true);
     try {
@@ -902,7 +780,6 @@ export default function LearnerPracticeEBA() {
         learnerId: currentUser.uid,
         teacherId: userData?.teacherId || null,
         classId: userData?.classId || null,
-        type: 'kompetenz',
         ...data,
         createdAt: Timestamp.now()
       });
@@ -912,44 +789,23 @@ export default function LearnerPracticeEBA() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Save handlers für verschiedene Typen
+  const handleSaveGesellschaft = async (data) => {
+    await saveEntry({ type: 'gesellschaft', ...data });
+  };
+
+  const handleSaveSprachmodus = async (data) => {
+    await saveEntry({ type: 'sprachmodus', ...data });
   };
 
   const handleSaveSchluessel = async (data) => {
-    if (!currentUser) return;
-    setLoading(true);
-    try {
-      await addDoc(collection(db, 'practiceEntriesEBA'), {
-        learnerId: currentUser.uid,
-        teacherId: userData?.teacherId || null,
-        classId: userData?.classId || null,
-        ...data,
-        createdAt: Timestamp.now()
-      });
-      await loadEntries();
-    } catch (err) {
-      alert('Fehler: ' + (err?.message || String(err)));
-    } finally {
-      setLoading(false);
-    }
+    await saveEntry({ type: 'schluesselkompetenz', ...data });
   };
 
   const handleSaveTransversal = async (data) => {
-    if (!currentUser) return;
-    setLoading(true);
-    try {
-      await addDoc(collection(db, 'practiceEntriesEBA'), {
-        learnerId: currentUser.uid,
-        teacherId: userData?.teacherId || null,
-        classId: userData?.classId || null,
-        ...data,
-        createdAt: Timestamp.now()
-      });
-      await loadEntries();
-    } catch (err) {
-      alert('Fehler: ' + (err?.message || String(err)));
-    } finally {
-      setLoading(false);
-    }
+    await saveEntry({ type: 'transversal', ...data });
   };
 
   // Get themes for current Lehrjahr
@@ -1049,10 +905,8 @@ export default function LearnerPracticeEBA() {
                   <p className="font-medium mb-1">Wie funktioniert das Erfassen?</p>
                   <ul className="list-disc ml-4 space-y-1 text-blue-700">
                     <li>Öffne ein <strong>Thema</strong> und dann einen <strong>Lebensbezug</strong></li>
-                    <li>Bei jeder Kompetenz siehst du <span style={{ color: uiColors.gesellschaft.text }}>Gesellschaftsinhalte</span> und <span style={{ color: uiColors.sprache.text }}>Sprachmodi</span></li>
-                    <li>Klicke auf "Erfassen" um deine Übung zu dokumentieren</li>
-                    <li><strong>Schlüsselkompetenzen</strong> sind Pflicht pro Thema</li>
-                    <li><strong>Transversale Themen</strong> (Digitalisierung, Nachhaltigkeit, Chancengerechtigkeit) sind freiwillig</li>
+                    <li>Klicke auf jeden einzelnen Inhalt (<span style={{ color: uiColors.gesellschaft.text }}>Gesellschaft</span>, <span style={{ color: uiColors.sprache.text }}>Sprache</span>, <span style={{ color: uiColors.schluessel.text }}>Schlüsselkompetenz</span>) um ihn zu erfassen</li>
+                    <li><strong>Transversale Themen</strong> (Digitalisierung, Nachhaltigkeit, Chancengerechtigkeit) sind am Ende jedes Themas</li>
                   </ul>
                 </div>
               </div>
@@ -1068,7 +922,8 @@ export default function LearnerPracticeEBA() {
                     key={thema.id}
                     thema={thema}
                     entries={entries}
-                    onSaveKompetenz={handleSaveKompetenz}
+                    onSaveGesellschaft={handleSaveGesellschaft}
+                    onSaveSprachmodus={handleSaveSprachmodus}
                     onSaveSchluessel={handleSaveSchluessel}
                     onSaveTransversal={handleSaveTransversal}
                   />
@@ -1089,12 +944,19 @@ export default function LearnerPracticeEBA() {
               <p className="text-gray-500">Noch keine Einträge vorhanden.</p>
             ) : (
               <div className="space-y-2">
-                {/* Filter */}
+                {/* Statistik */}
                 <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b">
-                  <span className="text-sm text-gray-500">
-                    {entries.filter(e => e.type === 'kompetenz').length} Kompetenzen •{' '}
-                    {entries.filter(e => e.type === 'schluesselkompetenz').length} Schlüsselkompetenzen •{' '}
-                    {entries.filter(e => e.type === 'transversal').length} Transversale
+                  <span className="px-2 py-1 text-xs rounded" style={{ backgroundColor: uiColors.gesellschaft.bg, color: uiColors.gesellschaft.text }}>
+                    {entries.filter(e => e.type === 'gesellschaft').length} Gesellschaft
+                  </span>
+                  <span className="px-2 py-1 text-xs rounded" style={{ backgroundColor: uiColors.sprache.bg, color: uiColors.sprache.text }}>
+                    {entries.filter(e => e.type === 'sprachmodus').length} Sprachmodi
+                  </span>
+                  <span className="px-2 py-1 text-xs rounded" style={{ backgroundColor: uiColors.schluessel.bg, color: uiColors.schluessel.text }}>
+                    {entries.filter(e => e.type === 'schluesselkompetenz').length} Schlüsselkomp.
+                  </span>
+                  <span className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-700">
+                    {entries.filter(e => e.type === 'transversal').length} Transversal
                   </span>
                 </div>
 
