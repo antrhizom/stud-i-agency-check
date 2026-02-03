@@ -54,19 +54,13 @@ const STATUS_OPTIONS = [
   { id: 'stark', label: 'stark geübt', color: '#DCFCE7', weight: 3 }
 ];
 
-const HOW_OPTIONS = [
-  'Fallbeispiel',
-  'Gespräch/Diskussion',
-  'Recherche',
-  'Rollenspiel',
-  'Reflexion',
-  'Präsentation',
-  'Schriftliche Arbeit',
-  'Gruppenarbeit',
-  'KI-gestützt',
-  'Projekt',
-  'Praxis/Betrieb',
-  'Anderes'
+const WHERE_OPTIONS = [
+  'Im Unterricht',
+  'Im Betrieb',
+  'Zu Hause',
+  'In einer Freistunde',
+  'In der Hausaufgabenstunde',
+  'Sonstige'
 ];
 
 // ============================================
@@ -83,13 +77,15 @@ const Accordion = ({ title, children, defaultOpen = false, headerBg = 'bg-gray-1
         onClick={() => setIsOpen(!isOpen)}
         className={`w-full px-4 py-3 flex items-center justify-between ${headerBg} hover:opacity-90 transition-opacity`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1">
           {icon && icon}
           <span className="font-medium text-left">{title}</span>
           {badge && (
-            <span className="px-2 py-0.5 text-xs rounded-full bg-white/50">
-              {badge}
-            </span>
+            <div className="ml-auto mr-2">
+              {typeof badge === 'string' ? (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-white/50">{badge}</span>
+              ) : badge}
+            </div>
           )}
         </div>
         {isOpen ? (
@@ -138,17 +134,16 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
   const [formData, setFormData] = useState({
     status: 'kurz',
     howMethod: '',
-    howCount: 1,
     note: ''
   });
 
   const handleSave = () => {
     if (!formData.howMethod) {
-      alert('Bitte wähle eine Methode aus.');
+      alert('Bitte wähle einen Ort aus.');
       return;
     }
     onSave(formData);
-    setFormData({ status: 'kurz', howMethod: '', howCount: 1, note: '' });
+    setFormData({ status: 'kurz', howMethod: '', note: '' });
     setShowForm(false);
   };
 
@@ -200,29 +195,20 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
             ))}
           </div>
 
-          {/* Wie & Wie oft */}
+          {/* Wo geübt */}
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[150px]">
-              <label className="text-xs text-gray-600 block mb-1">Wie geübt?</label>
+              <label className="text-xs text-gray-600 block mb-1">Wo geübt?</label>
               <select
                 value={formData.howMethod}
                 onChange={(e) => setFormData(prev => ({ ...prev, howMethod: e.target.value }))}
                 className="w-full px-2 py-1.5 border rounded text-xs"
               >
                 <option value="">— wählen —</option>
-                {HOW_OPTIONS.map(opt => (
+                {WHERE_OPTIONS.map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Wie oft?</label>
-              <Counter
-                value={formData.howCount}
-                onChange={(val) => setFormData(prev => ({ ...prev, howCount: val }))}
-                min={1}
-                max={10}
-              />
             </div>
             <button
               type="button"
@@ -429,9 +415,9 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
   };
 
   const handleSave = (ttId) => {
-    const data = formData[ttId] || { howMethod: '', howCount: 1, note: '' };
+    const data = formData[ttId] || { howMethod: '', note: '' };
     if (!data.howMethod) {
-      alert('Bitte wähle eine Methode aus.');
+      alert('Bitte wähle einen Ort aus.');
       return;
     }
     onSave({
@@ -440,7 +426,7 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
       themaId: thema.id,
       ...data
     });
-    setFormData(prev => ({ ...prev, [ttId]: { howMethod: '', howCount: 1, note: '' } }));
+    setFormData(prev => ({ ...prev, [ttId]: { howMethod: '', note: '' } }));
     setExpanded(prev => ({ ...prev, [ttId]: false }));
   };
 
@@ -460,7 +446,7 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
         {transversaleThemen.map(tt => {
           const ttEntries = entries.filter(e => e.transversalId === tt.id && e.themaId === thema.id);
           const isExpanded = expanded[tt.id];
-          const data = formData[tt.id] || { howMethod: '', howCount: 1, note: '' };
+          const data = formData[tt.id] || { howMethod: '', note: '' };
 
           return (
             <div key={tt.id} className="flex-1 min-w-[200px]">
@@ -505,23 +491,11 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
                       }))}
                       className="w-full px-2 py-1.5 border rounded text-sm"
                     >
-                      <option value="">Wie?</option>
-                      {HOW_OPTIONS.map(opt => (
+                      <option value="">Wo geübt?</option>
+                      {WHERE_OPTIONS.map(opt => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-600">Wie oft?</span>
-                      <Counter
-                        value={data.howCount}
-                        onChange={(val) => setFormData(prev => ({
-                          ...prev,
-                          [tt.id]: { ...data, howCount: val }
-                        }))}
-                        min={1}
-                        max={10}
-                      />
-                    </div>
                     <button
                       onClick={() => handleSave(tt.id)}
                       className="w-full py-1.5 text-white text-sm rounded"
@@ -544,12 +518,36 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
 const ThemaCard = ({ thema, entries, onSaveGesellschaft, onSaveSprachmodus, onSaveSchluessel, onSaveTransversal }) => {
   const farben = themenFarben[thema.id] || { bg: '#F3F4F6', text: '#374151' };
 
+  // Berechne Statistiken für dieses Thema
+  const themaEntries = entries.filter(e => e.themaId === thema.id);
+  const gesellschaftCount = themaEntries.filter(e => e.type === 'gesellschaft').length;
+  const sprachCount = themaEntries.filter(e => e.type === 'sprachmodus').length;
+  const schluesselCount = themaEntries.filter(e => e.type === 'schluesselkompetenz').length;
+  const transversalCount = themaEntries.filter(e => e.type === 'transversal').length;
+  const totalCount = themaEntries.length;
+
+  // Stats Badge für Header
+  const statsBadge = (
+    <div className="flex items-center gap-1 text-xs">
+      {totalCount > 0 ? (
+        <>
+          <span className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: uiColors.gesellschaft.text }}>{gesellschaftCount}</span>
+          <span className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: uiColors.sprache.text }}>{sprachCount}</span>
+          <span className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: uiColors.schluessel.text }}>{schluesselCount}</span>
+          {transversalCount > 0 && <span className="px-1.5 py-0.5 rounded bg-purple-600 text-white">{transversalCount}</span>}
+        </>
+      ) : (
+        <span className="text-gray-400">noch keine Einträge</span>
+      )}
+    </div>
+  );
+
   return (
     <Accordion
       title={`Thema ${thema.order}: ${thema.title}`}
       headerBg=""
       icon={<div className="w-3 h-3 rounded-full" style={{ backgroundColor: thema.color }} />}
-      badge={`${thema.lektionen} Lekt.`}
+      badge={statsBadge}
       defaultOpen={false}
     >
       <div style={{ borderLeft: `4px solid ${thema.color}`, paddingLeft: '1rem' }}>
@@ -631,9 +629,8 @@ const EntryDetailCard = ({ entry, onDelete }) => {
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
-              <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
-              <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
-              {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
+              <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
+                            {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
           </div>
           <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
@@ -666,9 +663,8 @@ const EntryDetailCard = ({ entry, onDelete }) => {
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
-              <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
-              <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
-              {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
+              <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
+                            {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
           </div>
           <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
@@ -699,9 +695,8 @@ const EntryDetailCard = ({ entry, onDelete }) => {
             <p className="text-sm font-medium text-gray-800">{sk?.label}</p>
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
-              <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
-              <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
-              {entry.createdAt && (
+              <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
+                            {entry.createdAt && (
                 <span className="text-gray-400">
                   {entry.createdAt.toLocaleDateString('de-CH')}
                 </span>
@@ -739,9 +734,8 @@ const EntryDetailCard = ({ entry, onDelete }) => {
             <p className="text-sm font-medium text-gray-800">{tt?.label}</p>
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
-              <span className="text-gray-600">Wie: <strong>{entry.howMethod}</strong></span>
-              <span className="text-gray-600">Anzahl: <strong>{entry.howCount}×</strong></span>
-              {entry.createdAt && (
+              <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
+                            {entry.createdAt && (
                 <span className="text-gray-400">
                   {entry.createdAt.toLocaleDateString('de-CH')}
                 </span>
