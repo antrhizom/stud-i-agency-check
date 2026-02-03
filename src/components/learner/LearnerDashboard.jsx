@@ -184,41 +184,9 @@ export default function LearnerDashboard() {
     setTagIds(prev => (prev.includes(id) ? prev.filter(x => x != id) : [...prev, id]));
   };
 
-  // Wenn EBA-Modus aktiv ist, zeige die LearnerPracticeEBA-Komponente
+  // Zeige direkt die LearnerPracticeEBA-Komponente (ABU EBA)
   if (activeMode === 'eba') {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Mode Switcher */}
-        <div className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white">
-          <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium">Lehrplan wählen:</span>
-              <div className="flex gap-1 bg-white/20 rounded-lg p-1">
-                <button
-                  onClick={() => setActiveMode('eba')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    activeMode === 'eba' ? 'bg-white text-cyan-700' : 'text-white/80 hover:text-white'
-                  }`}
-                >
-                  <GraduationCap className="w-4 h-4 inline mr-1" />
-                  ABU EBA (2-jährig)
-                </button>
-                <button
-                  onClick={() => setActiveMode('fahrzeug')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    activeMode === 'fahrzeug' ? 'bg-white text-cyan-700' : 'text-white/80 hover:text-white'
-                  }`}
-                >
-                  ABU Fahrzeugberufe
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        {/* EBA Component */}
-        <LearnerPracticeEBA />
-      </div>
-    );
+    return <LearnerPracticeEBA />;
   }
 
   return (
