@@ -12,17 +12,18 @@ import {
   where,
   Timestamp
 } from 'firebase/firestore';
-import { themes, competencies } from '../../data/curriculum';
-import { LogOut, Users, Plus, Copy, Search, MessageSquare } from 'lucide-react';
-
-const CODE_EMAIL_DOMAIN = 'studiagency-check.ch';
-
-function generateCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-  return code;
-}
+import {
+  themes,
+  animalSymbols,
+  generateUniqueAnimalSymbols,
+  generateCode,
+  allLanguageModes,
+  allKeySkills,
+  getThemeLanguageModes,
+  getThemeKeySkills
+} from '../../data/curriculum';
+import { exportLearnersCSV } from '../../utils/csvExport';
+import { LogOut, Users, Plus, Copy, Download, MessageSquare, Eye } from 'lucide-react';
 
 function ymd(d) {
   const dt = d instanceof Date ? d : new Date(d);
@@ -34,7 +35,8 @@ export default function TeacherDashboard() {
 
   const [activeTab, setActiveTab] = useState('classes');
   const [classes, setClasses] = useState([]);
-  const [learners, setLearners] = useState([]);
+  const [learnerCodes, setLearnerCodes] = useState([]); // Alle learnerCodes-Dokumente
+  const [learners, setLearners] = useState([]); // Registrierte Lernende (users)
 
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedLearnerId, setSelectedLearnerId] = useState('');
@@ -42,37 +44,41 @@ export default function TeacherDashboard() {
 
   // UI: Klasse erstellen
   const [newClassName, setNewClassName] = useState('');
+  const [newLearnerCount, setNewLearnerCount] = useState(10);
   const [creatingClass, setCreatingClass] = useState(false);
 
-  // UI: Codes
-  const [showCodeModal, setShowCodeModal] = useState(false);
-  const [codeMode, setCodeMode] = useState('single'); // single | batch
-  const [learnerName, setLearnerName] = useState('');
-  const [batchNames, setBatchNames] = useState('');
-  const [generated, setGenerated] = useState([]); // [{name, code}]
-  const [copyInfoName, setCopyInfoName] = useState('');
+  // UI: Codes anzeigen Modal
+  const [showCodesModal, setShowCodesModal] = useState(false);
+  const [viewClassId, setViewClassId] = useState('');
 
   // UI: Notiz auf Eintrag
   const [noteEntryId, setNoteEntryId] = useState('');
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
-  // Load classes + learners
+  // Load classes + learnerCodes + learners
   useEffect(() => {
     if (!currentUser) return;
 
     const load = async () => {
+      // Klassen laden
       const cq = query(collection(db, 'classes'), where('teacherId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
       const cs = await getDocs(cq);
       const cls = cs.docs.map(d => ({ id: d.id, ...d.data() }));
       setClasses(cls);
       if (!selectedClassId && cls.length) setSelectedClassId(cls[0].id);
 
+      // LearnerCodes laden
+      const lcq = query(collection(db, 'learnerCodes'), where('teacherId', '==', currentUser.uid));
+      const lcs = await getDocs(lcq);
+      const codes = lcs.docs.map(d => ({ id: d.id, ...d.data() }));
+      setLearnerCodes(codes);
+
+      // Registrierte Lernende laden
       const lq = query(collection(db, 'users'), where('role', '==', 'learner'), where('teacherId', '==', currentUser.uid));
       const ls = await getDocs(lq);
       const lrn = ls.docs.map(d => ({ id: d.id, ...d.data() }));
-      // stabil sort
-      lrn.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+      lrn.sort((a, b) => (a.animalName || a.name || '').localeCompare(b.animalName || b.name || ''));
       setLearners(lrn);
       if (!selectedLearnerId && lrn.length) setSelectedLearnerId(lrn[0].id);
     };
@@ -91,33 +97,31 @@ export default function TeacherDashboard() {
       const pq = query(
         collection(db, 'practiceEntries'),
         where('learnerId', '==', selectedLearnerId),
-        orderBy('date', 'desc')
+        orderBy('createdAt', 'desc')
       );
       const ps = await getDocs(pq);
-      const data = ps.docs.map(d => ({ id: d.id, ...d.data(), date: d.data().date?.toDate?.() ? d.data().date.toDate() : null }));
+      const data = ps.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate?.() ? d.data().createdAt.toDate() : null
+      }));
       setPracticeEntries(data);
     };
 
     load().catch(console.error);
   }, [selectedLearnerId]);
 
-  const learnersByClass = useMemo(() => {
+  const learnerCodesByClass = useMemo(() => {
     const map = {};
-    for (const l of learners) {
-      const cid = l.classId || 'ohne-klasse';
+    for (const lc of learnerCodes) {
+      const cid = lc.classId || 'ohne-klasse';
       map[cid] = map[cid] || [];
-      map[cid].push(l);
+      map[cid].push(lc);
     }
     return map;
-  }, [learners]);
+  }, [learnerCodes]);
 
   const selectedLearner = useMemo(() => learners.find(l => l.id === selectedLearnerId) || null, [learners, selectedLearnerId]);
-
-  const competencyById = useMemo(() => {
-    const m = {};
-    for (const c of competencies) m[c.id] = c;
-    return m;
-  }, []);
 
   const themeById = useMemo(() => {
     const m = {};
@@ -125,68 +129,79 @@ export default function TeacherDashboard() {
     return m;
   }, []);
 
+  // Klasse mit Tiersymbolen erstellen
   const createClass = async () => {
     if (!newClassName.trim() || !currentUser) return;
+    if (newLearnerCount < 1 || newLearnerCount > 30) {
+      alert('Bitte zwischen 1 und 30 Lernende angeben.');
+      return;
+    }
+
     setCreatingClass(true);
     try {
-      const ref = await addDoc(collection(db, 'classes'), {
+      // 1. Klasse erstellen
+      const classRef = await addDoc(collection(db, 'classes'), {
         name: newClassName.trim(),
         teacherId: currentUser.uid,
+        learnerCount: newLearnerCount,
         createdAt: Timestamp.now()
       });
-      const newClass = { id: ref.id, name: newClassName.trim(), teacherId: currentUser.uid, createdAt: new Date() };
+
+      // 2. Einzigartige Tiersymbole generieren
+      const animals = generateUniqueAnimalSymbols(newLearnerCount);
+
+      // 3. Für jedes Tier einen Code erstellen
+      const newCodes = [];
+      for (const animal of animals) {
+        const code = generateCode();
+        const codeDoc = await addDoc(collection(db, 'learnerCodes'), {
+          code,
+          animalId: animal.id,
+          animalEmoji: animal.emoji,
+          animalName: animal.name,
+          teacherId: currentUser.uid,
+          classId: classRef.id,
+          used: false,
+          userId: null,
+          createdAt: Timestamp.now()
+        });
+        newCodes.push({
+          id: codeDoc.id,
+          code,
+          animalId: animal.id,
+          animalEmoji: animal.emoji,
+          animalName: animal.name,
+          classId: classRef.id,
+          teacherId: currentUser.uid,
+          used: false
+        });
+      }
+
+      // State aktualisieren
+      const newClass = {
+        id: classRef.id,
+        name: newClassName.trim(),
+        teacherId: currentUser.uid,
+        learnerCount: newLearnerCount,
+        createdAt: new Date()
+      };
       setClasses(prev => [newClass, ...prev]);
-      setSelectedClassId(ref.id);
+      setLearnerCodes(prev => [...prev, ...newCodes]);
+      setSelectedClassId(classRef.id);
       setNewClassName('');
+      setNewLearnerCount(10);
+
+      // Automatisch Codes anzeigen
+      setViewClassId(classRef.id);
+      setShowCodesModal(true);
     } finally {
       setCreatingClass(false);
     }
   };
 
-  const openCodeModal = () => {
-    if (!classes.length) {
-      alert('Bitte zuerst eine Klasse anlegen.');
-      return;
-    }
-    setShowCodeModal(true);
-    setGenerated([]);
-    setLearnerName('');
-    setBatchNames('');
-    setCopyInfoName('');
-  };
-
-  const createCodes = async () => {
-    if (!currentUser) return;
-    if (!selectedClassId) {
-      alert('Bitte Klasse wählen.');
-      return;
-    }
-
-    const names = codeMode === 'batch'
-      ? batchNames.split('\n').map(s => s.trim()).filter(Boolean)
-      : [learnerName.trim()].filter(Boolean);
-
-    if (!names.length) {
-      alert('Bitte Name(n) eingeben.');
-      return;
-    }
-
-    const out = [];
-    for (const name of names) {
-      const code = generateCode();
-      await addDoc(collection(db, 'learnerCodes'), {
-        code,
-        name,
-        teacherId: currentUser.uid,
-        classId: selectedClassId,
-        used: false,
-        userId: null,
-        createdAt: Timestamp.now()
-      });
-      out.push({ name, code });
-    }
-    setGenerated(out);
-    setCopyInfoName(names[0] || '');
+  const viewCodes = (classId) => {
+    setViewClassId(classId);
+    setShowCodesModal(true);
   };
 
   const copyCode = async (code) => {
@@ -194,10 +209,17 @@ export default function TeacherDashboard() {
     alert('Code kopiert!');
   };
 
-  const copyInstructions = async (name, code) => {
-    const text = `Hallo ${name}!\n\nDu bist jetzt registriert für stud-i-agency-check (ABU zirkulär kompetent).\n\nDein Code: ${code}\n\nWICHTIG: Dieser Code ist dein dauerhaftes Passwort.\n\nSo geht\'s:\n1. App öffnen (Vercel-URL)\n2. "Als Lernende:r einloggen" klicken\n3. Code eingeben: ${code}\n4. Fertig!\n`;
+  const copyAllCodes = async () => {
+    const codes = learnerCodesByClass[viewClassId] || [];
+    const text = codes.map(c => `${c.animalEmoji} ${c.animalName}: ${c.code}`).join('\n');
     await navigator.clipboard.writeText(text);
-    alert('Anleitung kopiert!');
+    alert('Alle Codes kopiert!');
+  };
+
+  const downloadCSV = () => {
+    const codes = learnerCodesByClass[viewClassId] || [];
+    const cls = classes.find(c => c.id === viewClassId);
+    exportLearnersCSV(codes, cls?.name || 'Klasse');
   };
 
   const startNote = (entry) => {
@@ -226,13 +248,24 @@ export default function TeacherDashboard() {
     return learners.filter(l => l.classId === selectedClassId);
   }, [learners, selectedClassId]);
 
+  // Einträge nach Thema gruppieren
+  const entriesByTheme = useMemo(() => {
+    const map = {};
+    for (const e of practiceEntries) {
+      const tid = e.themeId || 'other';
+      map[tid] = map[tid] || [];
+      map[tid].push(e);
+    }
+    return map;
+  }, [practiceEntries]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">stud-i-agency-check</h1>
-            <p className="text-sm text-gray-600">ABU zirkulär kompetent · {userData?.displayName || userData?.name || ''}</p>
+            <p className="text-sm text-gray-600">ABU zirkulär kompetent · Lehrperson: {userData?.displayName || userData?.name || ''}</p>
           </div>
           <button
             onClick={signOut}
@@ -245,214 +278,369 @@ export default function TeacherDashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6">
-        <div className="flex gap-2 mb-6">
-          <button onClick={() => setActiveTab('classes')} className={`px-4 py-2 rounded-lg ${activeTab==='classes' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>Klassen</button>
-          <button onClick={() => setActiveTab('learners')} className={`px-4 py-2 rounded-lg ${activeTab==='learners' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>Lernende</button>
-          <button onClick={() => setActiveTab('entries')} className={`px-4 py-2 rounded-lg ${activeTab==='entries' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>Einträge</button>
+        <div className="flex gap-2 mb-6 overflow-x-auto">
+          <button onClick={() => setActiveTab('classes')} className={`px-4 py-2 rounded-lg whitespace-nowrap ${activeTab === 'classes' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
+            <Users className="w-4 h-4 inline mr-1" /> Klassen
+          </button>
+          <button onClick={() => setActiveTab('learners')} className={`px-4 py-2 rounded-lg whitespace-nowrap ${activeTab === 'learners' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
+            Lernende
+          </button>
+          <button onClick={() => setActiveTab('entries')} className={`px-4 py-2 rounded-lg whitespace-nowrap ${activeTab === 'entries' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
+            Einträge
+          </button>
         </div>
 
         {activeTab === 'classes' && (
-          <div className="bg-white rounded-2xl shadow p-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Users className="w-5 h-5" /> Klassen</h2>
+          <div className="space-y-6">
+            {/* Neue Klasse erstellen */}
+            <div className="bg-white rounded-2xl shadow p-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Plus className="w-5 h-5" /> Neue Klasse erstellen
+              </h2>
 
-            <div className="flex gap-3 mb-6">
-              <input
-                value={newClassName}
-                onChange={(e) => setNewClassName(e.target.value)}
-                placeholder="z.B. EBA FAZ1 2026"
-                className="flex-1 border rounded-lg px-3 py-2"
-              />
-              <button
-                onClick={createClass}
-                disabled={creatingClass || !newClassName.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
-              >
-                <Plus className="w-4 h-4 inline mr-1" />
-                Erstellen
-              </button>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Klassenname</label>
+                  <input
+                    value={newClassName}
+                    onChange={(e) => setNewClassName(e.target.value)}
+                    placeholder="z.B. EBA FAZ1 2026"
+                    className="w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Anzahl Lernende (max. 30)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="30"
+                    value={newLearnerCount}
+                    onChange={(e) => setNewLearnerCount(parseInt(e.target.value) || 1)}
+                    className="w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={createClass}
+                    disabled={creatingClass || !newClassName.trim()}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 hover:bg-blue-700 transition"
+                  >
+                    {creatingClass ? 'Erstelle...' : 'Klasse + Codes erstellen'}
+                  </button>
+                </div>
+              </div>
+
+              <p className="mt-3 text-sm text-gray-600">
+                Tiersymbole werden automatisch zugewiesen. Sie können die Liste als CSV exportieren und Namen extern zuordnen.
+              </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              {classes.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => setSelectedClassId(c.id)}
-                  className={`text-left border rounded-xl p-4 hover:bg-gray-50 ${selectedClassId===c.id ? 'border-blue-600' : 'border-gray-200'}`}
-                >
-                  <div className="font-medium">{c.name}</div>
-                  <div className="text-sm text-gray-600">{(learnersByClass[c.id] || []).length} Lernende</div>
-                </button>
-              ))}
-            </div>
+            {/* Bestehende Klassen */}
+            <div className="bg-white rounded-2xl shadow p-6">
+              <h2 className="text-lg font-semibold mb-4">Meine Klassen</h2>
 
-            <div className="mt-6">
-              <button
-                onClick={openCodeModal}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black"
-              >
-                <Plus className="w-4 h-4" /> Lernenden-Codes erstellen
-              </button>
+              {classes.length === 0 ? (
+                <p className="text-gray-600">Noch keine Klassen erstellt.</p>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {classes.map(c => {
+                    const codes = learnerCodesByClass[c.id] || [];
+                    const usedCount = codes.filter(code => code.used).length;
+                    return (
+                      <div
+                        key={c.id}
+                        className={`border rounded-xl p-4 hover:shadow-md transition ${selectedClassId === c.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-semibold text-lg">{c.name}</div>
+                            <div className="text-sm text-gray-600">{codes.length} Codes · {usedCount} aktiv</div>
+                          </div>
+                          <button
+                            onClick={() => viewCodes(c.id)}
+                            className="p-2 hover:bg-gray-100 rounded-lg"
+                            title="Codes anzeigen"
+                          >
+                            <Eye className="w-5 h-5 text-gray-600" />
+                          </button>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-1">
+                          {codes.slice(0, 8).map(code => (
+                            <span key={code.id} className="text-lg" title={`${code.animalName}: ${code.code}`}>
+                              {code.animalEmoji}
+                            </span>
+                          ))}
+                          {codes.length > 8 && (
+                            <span className="text-sm text-gray-500">+{codes.length - 8}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {activeTab === 'learners' && (
           <div className="bg-white rounded-2xl shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Lernende</h2>
+            <h2 className="text-lg font-semibold mb-4">Lernende (registriert)</h2>
 
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="md:w-1/3 space-y-3">
-                <label className="text-sm text-gray-600">Klasse</label>
-                <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-
-                <label className="text-sm text-gray-600">Lernende auswählen</label>
-                <select value={selectedLearnerId} onChange={(e) => setSelectedLearnerId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                  {filteredLearners.map(l => <option key={l.id} value={l.id}>{l.name || l.displayName || l.email}</option>)}
-                </select>
-              </div>
-
-              <div className="md:flex-1">
-                {selectedLearner ? (
-                  <div className="border rounded-xl p-4">
-                    <div className="font-semibold">{selectedLearner.name || selectedLearner.displayName}</div>
-                    <div className="text-sm text-gray-600">Klasse: {themeById[selectedLearner.classId]?.name || (classes.find(c => c.id===selectedLearner.classId)?.name || '—')}</div>
-                    <div className="text-sm text-gray-600">Einträge: {practiceEntries.length}</div>
-                    <div className="text-sm text-gray-600 mt-2">Hinweis: Externe Zugänge erstellt der Admin.</div>
-                  </div>
-                ) : (
-                  <div className="text-gray-600">Keine Lernenden gefunden.</div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'entries' && (
-          <div className="bg-white rounded-2xl shadow p-6">
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
-              <div>
-                <h2 className="text-lg font-semibold">Einträge</h2>
-                <p className="text-sm text-gray-600">Übungen/Kompetenzen (Pflichtprogramm & frei) pro Lernende</p>
-              </div>
-              <div className="flex gap-2">
-                <select value={selectedLearnerId} onChange={(e) => setSelectedLearnerId(e.target.value)} className="border rounded-lg px-3 py-2">
-                  {learners.map(l => <option key={l.id} value={l.id}>{l.name || l.displayName || l.email}</option>)}
-                </select>
-              </div>
+            <div className="mb-4">
+              <label className="text-sm text-gray-600">Klasse auswählen</label>
+              <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="w-full md:w-auto border rounded-lg px-3 py-2 mt-1">
+                <option value="">Alle Klassen</option>
+                {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
 
-            {practiceEntries.length === 0 ? (
-              <p className="text-gray-600">Noch keine Einträge.</p>
+            {filteredLearners.length === 0 ? (
+              <p className="text-gray-600">Noch keine Lernenden registriert. Lernende müssen sich mit ihrem Code einloggen.</p>
             ) : (
-              <div className="space-y-3">
-                {practiceEntries.map(e => {
-                  const c = competencyById[e.competencyId];
-                  const t = themes.find(x => x.id === e.themeId);
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredLearners.map(l => {
+                  const cls = classes.find(c => c.id === l.classId);
                   return (
-                    <div key={e.id} className="border rounded-xl p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      key={l.id}
+                      onClick={() => {
+                        setSelectedLearnerId(l.id);
+                        setActiveTab('entries');
+                      }}
+                      className={`text-left border rounded-xl p-4 hover:bg-gray-50 transition ${selectedLearnerId === l.id ? 'border-blue-600' : 'border-gray-200'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">{l.animalEmoji || '👤'}</span>
                         <div>
-                          <div className="font-medium">{c ? c.title : e.competencyId}</div>
-                          <div className="text-sm text-gray-600">{ymd(e.date || new Date())} · {t ? t.title : 'ohne Thema'} · Status: {e.status}</div>
+                          <div className="font-medium">{l.animalName || l.name || 'Lernende/r'}</div>
+                          <div className="text-sm text-gray-600">{cls?.name || 'Keine Klasse'}</div>
                         </div>
-                        <button onClick={() => startNote(e)} className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50">
-                          <MessageSquare className="w-4 h-4" />
-                          Notiz
-                        </button>
                       </div>
-                      {(e.where || e.how || e.note) && (
-                        <div className="mt-3 text-sm text-gray-800 space-y-1">
-                          {e.where && <div><span className="text-gray-500">Wo:</span> {e.where}</div>}
-                          {e.how && <div><span className="text-gray-500">Wie:</span> {e.how}</div>}
-                          {e.note && <div><span className="text-gray-500">Notiz:</span> {e.note}</div>}
-                          {e.teacherNote && <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded"><span className="font-medium">Lehrperson:</span> {e.teacherNote}</div>}
-                        </div>
-                      )}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             )}
           </div>
         )}
-      </main>
 
-      {showCodeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6">
-            <div className="flex items-start justify-between">
+        {activeTab === 'entries' && (
+          <div className="bg-white rounded-2xl shadow p-6">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
               <div>
-                <h3 className="text-xl font-bold">Lernenden-Codes erstellen</h3>
-                <p className="text-sm text-gray-600">Codes sind dauerhafte Passwörter. Lernende loggen sich via Code ein.</p>
+                <h2 className="text-lg font-semibold">Einträge</h2>
+                <p className="text-sm text-gray-600">Übungseinträge pro Lernende (Pflicht & Freiwillig)</p>
               </div>
-              <button onClick={() => setShowCodeModal(false)} className="px-3 py-1 border rounded-lg">Schliessen</button>
+              <div className="flex gap-2 items-center">
+                <select value={selectedLearnerId} onChange={(e) => setSelectedLearnerId(e.target.value)} className="border rounded-lg px-3 py-2">
+                  <option value="">Lernende wählen...</option>
+                  {learners.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.animalEmoji} {l.animalName || l.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className="mt-4 grid md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <label className="text-sm text-gray-600">Klasse</label>
-                <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-
-                <div className="flex gap-2">
-                  <button onClick={() => setCodeMode('single')} className={`flex-1 px-3 py-2 rounded-lg border ${codeMode==='single' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'}`}>Einzeln</button>
-                  <button onClick={() => setCodeMode('batch')} className={`flex-1 px-3 py-2 rounded-lg border ${codeMode==='batch' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'}`}>Batch</button>
+            {!selectedLearner ? (
+              <p className="text-gray-600">Bitte Lernende auswählen.</p>
+            ) : (
+              <>
+                <div className="mb-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+                  <span className="text-4xl">{selectedLearner.animalEmoji || '👤'}</span>
+                  <div>
+                    <div className="font-semibold text-lg">{selectedLearner.animalName || selectedLearner.name}</div>
+                    <div className="text-sm text-gray-600">
+                      {classes.find(c => c.id === selectedLearner.classId)?.name || 'Keine Klasse'} · {practiceEntries.length} Einträge
+                    </div>
+                  </div>
                 </div>
 
-                {codeMode === 'single' ? (
-                  <div>
-                    <label className="text-sm text-gray-600">Name</label>
-                    <input value={learnerName} onChange={(e) => setLearnerName(e.target.value)} className="w-full border rounded-lg px-3 py-2" placeholder="z.B. Max Muster" />
-                  </div>
+                {practiceEntries.length === 0 ? (
+                  <p className="text-gray-600">Noch keine Einträge.</p>
                 ) : (
-                  <div>
-                    <label className="text-sm text-gray-600">Namen (1 pro Zeile)</label>
-                    <textarea value={batchNames} onChange={(e) => setBatchNames(e.target.value)} className="w-full border rounded-lg px-3 py-2 h-32" placeholder="Max Muster\nLea Beispiel" />
-                  </div>
-                )}
-
-                <button onClick={createCodes} className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black">
-                  <Plus className="w-4 h-4 inline mr-1" /> Codes generieren
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <div className="text-sm text-gray-600">Ergebnis</div>
-                {generated.length === 0 ? (
-                  <div className="text-gray-600 border rounded-xl p-4">Noch keine Codes generiert.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {generated.map(g => (
-                      <div key={g.code} className="border rounded-xl p-3">
-                        <div className="font-medium">{g.name}</div>
-                        <div className="flex items-center justify-between gap-2 mt-1">
-                          <div className="font-mono text-lg">{g.code}</div>
-                          <div className="flex gap-2">
-                            <button onClick={() => copyCode(g.code)} className="px-3 py-2 border rounded-lg hover:bg-gray-50"><Copy className="w-4 h-4" /></button>
-                            <button onClick={() => copyInstructions(g.name, g.code)} className="px-3 py-2 border rounded-lg hover:bg-gray-50">Anleitung</button>
+                  <div className="space-y-6">
+                    {themes.map(theme => {
+                      const entries = entriesByTheme[theme.id] || [];
+                      if (entries.length === 0) return null;
+                      return (
+                        <div key={theme.id}>
+                          <h3 className="font-semibold text-gray-800 mb-2">{theme.order}. {theme.title}</h3>
+                          <div className="space-y-3">
+                            {entries.map(e => (
+                              <div key={e.id} className="border rounded-xl p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <div className="text-sm text-gray-500">{ymd(e.createdAt || new Date())}</div>
+                                    <div className="mt-1 flex flex-wrap gap-2">
+                                      {/* Pflicht-Sprachmodi */}
+                                      {e.mandatoryLanguageModes?.map(modeId => {
+                                        const mode = allLanguageModes.find(m => m.id === modeId);
+                                        return (
+                                          <span key={modeId} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                            {mode?.short || modeId}
+                                          </span>
+                                        );
+                                      })}
+                                      {/* Freiwillige Sprachmodi */}
+                                      {e.additionalLanguageModes?.map(modeId => {
+                                        const mode = allLanguageModes.find(m => m.id === modeId);
+                                        return (
+                                          <span key={modeId} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                                            + {mode?.short || modeId}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {/* Pflicht-Schlüsselkompetenzen */}
+                                      {e.mandatoryKeySkills?.map(skillRef => {
+                                        const skill = allKeySkills.find(s => s.id === skillRef.replace(/-R[12]$/, ''));
+                                        return (
+                                          <span key={skillRef} className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
+                                            {skill?.short || skillRef}
+                                          </span>
+                                        );
+                                      })}
+                                      {/* Freiwillige Schlüsselkompetenzen */}
+                                      {e.additionalKeySkills?.map(skillRef => {
+                                        const skill = allKeySkills.find(s => s.id === skillRef.replace(/-R[12]$/, ''));
+                                        return (
+                                          <span key={skillRef} className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
+                                            + {skill?.short || skillRef}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                    {e.context && (
+                                      <div className="mt-2 text-sm text-gray-600">Kontext: {e.context}</div>
+                                    )}
+                                    {e.reflection && (
+                                      <div className="mt-2 p-2 bg-gray-50 rounded text-sm">{e.reflection}</div>
+                                    )}
+                                    {e.teacherNote && (
+                                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                                        <span className="font-medium">Lehrperson:</span> {e.teacherNote}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => startNote(e)}
+                                    className="p-2 border rounded-lg hover:bg-gray-50"
+                                    title="Notiz hinzufügen"
+                                  >
+                                    <MessageSquare className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
+              </>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* Codes Modal */}
+      {showCodesModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-xl font-bold">Lernenden-Codes</h3>
+                  <p className="text-sm text-gray-600">
+                    {classes.find(c => c.id === viewClassId)?.name || 'Klasse'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={copyAllCodes}
+                    className="px-3 py-2 border rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <Copy className="w-4 h-4" /> Alle kopieren
+                  </button>
+                  <button
+                    onClick={downloadCSV}
+                    className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" /> CSV Export
+                  </button>
+                  <button onClick={() => setShowCodesModal(false)} className="px-3 py-2 border rounded-lg hover:bg-gray-50">
+                    Schliessen
+                  </button>
+                </div>
               </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid md:grid-cols-2 gap-3">
+                {(learnerCodesByClass[viewClassId] || []).map(code => (
+                  <div
+                    key={code.id}
+                    className={`border rounded-xl p-4 flex items-center justify-between ${code.used ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">{code.animalEmoji}</span>
+                      <div>
+                        <div className="font-medium">{code.animalName}</div>
+                        <div className="font-mono text-lg tracking-wider">{code.code}</div>
+                        {code.used && (
+                          <div className="text-xs text-green-600">Aktiv</div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => copyCode(code.code)}
+                      className="p-2 hover:bg-white rounded-lg"
+                      title="Code kopieren"
+                    >
+                      <Copy className="w-5 h-5 text-gray-600" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 text-sm text-gray-600">
+              Tipp: Exportieren Sie die Liste als CSV und fügen Sie die Namen der Lernenden in Excel/Sheets hinzu.
             </div>
           </div>
         </div>
       )}
 
+      {/* Notiz Modal */}
       {noteEntryId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
             <h3 className="text-xl font-bold mb-2">Notiz der Lehrperson</h3>
-            <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} className="w-full border rounded-lg px-3 py-2 h-32" placeholder="Feedback, Hinweise, nächste Schritte..." />
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 h-32"
+              placeholder="Feedback, Hinweise, nächste Schritte..."
+            />
             <div className="flex gap-2 mt-4">
-              <button onClick={() => { setNoteEntryId(''); setNoteText(''); }} className="flex-1 px-4 py-2 border rounded-lg">Abbrechen</button>
-              <button onClick={saveNote} disabled={savingNote} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">Speichern</button>
+              <button
+                onClick={() => { setNoteEntryId(''); setNoteText(''); }}
+                className="flex-1 px-4 py-2 border rounded-lg"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={saveNote}
+                disabled={savingNote}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+              >
+                Speichern
+              </button>
             </div>
           </div>
         </div>

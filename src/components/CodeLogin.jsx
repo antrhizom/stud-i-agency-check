@@ -55,9 +55,6 @@ export default function CodeLogin({ role, onBack }) {
       const codeDoc = codeSnapshot.docs[0];
       const codeData = codeDoc.data();
 
-      // Optional: blocke "used" nicht, weil Codes als dauerhaftes Passwort gedacht sind.
-      // Wenn ihr Externe zeitlich begrenzen wollt, könnt ihr expiresAt prüfen.
-
       const email = `${codeUpper.toLowerCase()}@${CODE_EMAIL_DOMAIN}`;
       const password = codeUpper;
 
@@ -76,11 +73,14 @@ export default function CodeLogin({ role, onBack }) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // DisplayName
-        const displayName = isExternal ? (codeData.displayName || 'Externer Zugriff') : (codeData.name || 'Lernende:r');
+        // DisplayName - jetzt mit Tiersymbol
+        const displayName = isExternal
+          ? (codeData.displayName || 'Externer Zugriff')
+          : (codeData.animalName || codeData.name || 'Lernende:r');
+
         await updateProfile(user, { displayName });
 
-        // 3) User-Dokument
+        // 3) User-Dokument - jetzt mit Tiersymbol-Daten
         if (isExternal) {
           await setDoc(doc(db, 'users', user.uid), {
             role: 'external',
@@ -94,8 +94,13 @@ export default function CodeLogin({ role, onBack }) {
         } else {
           await setDoc(doc(db, 'users', user.uid), {
             role: 'learner',
-            name: codeData.name,
-            displayName: codeData.name,
+            // Tiersymbol-Daten übernehmen
+            animalId: codeData.animalId || null,
+            animalEmoji: codeData.animalEmoji || null,
+            animalName: codeData.animalName || null,
+            // Legacy-Felder für Kompatibilität
+            name: codeData.animalName || codeData.name || null,
+            displayName: codeData.animalName || codeData.name || null,
             email,
             code: codeUpper,
             teacherId: codeData.teacherId,
@@ -104,7 +109,7 @@ export default function CodeLogin({ role, onBack }) {
             firstLogin: Timestamp.now()
           });
 
-          // codeDoc markieren (optional)
+          // codeDoc als verwendet markieren
           await updateDoc(doc(db, 'learnerCodes', codeDoc.id), {
             used: true,
             userId: user.uid,
@@ -167,7 +172,7 @@ export default function CodeLogin({ role, onBack }) {
         <div className="text-xs text-gray-500 text-center pt-2">
           {role === 'external'
             ? 'Externe sehen nur freigegebene Inhalte der zugewiesenen Person.'
-            : 'Der Code funktioniert als dauerhaftes Passwort (auf allen Geräten).'}
+            : 'Dein Code funktioniert als dauerhaftes Passwort. Du erhältst ein persönliches Tiersymbol.'}
         </div>
       </form>
     </div>
