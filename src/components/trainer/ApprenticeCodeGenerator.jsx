@@ -58,7 +58,7 @@ const ApprenticeCodeGenerator = ({ trainerId, companyId }) => {
   };
 
   const copyInstructions = () => {
-    const text = `Hallo ${apprenticeName}! Du bist jetzt registriert für stud-i-agency-check (ABU zirkulär kompetent).
+    const text = `Hallo ${apprenticeName}! Du bist jetzt registriert für stud-i-agency-chek.
 
 Dein Code: ${generatedCode}
 
@@ -66,8 +66,8 @@ WICHTIG: Dieser Code ist dein dauerhaftes Passwort!
 Du kannst dich damit jederzeit auf allen Geräten einloggen.
 
 So geht's:
-1. App öffnen: stud-i-agency-check.vercel.app
-2. "Als Lernende:r einloggen" klicken
+1. App öffnen: stud-i-agency-chek.vercel.app
+2. "Als Lernende:r einloggen" klicken  
 3. Code eingeben: ${generatedCode}
 4. Fertig!
 
@@ -194,7 +194,7 @@ Bei erneutem Login: Einfach wieder den gleichen Code eingeben.`;
                 📱 So informieren Sie den/die Lernende:n:
               </p>
               <div className="bg-white p-3 rounded border border-gray-200 text-xs text-gray-600 space-y-1">
-                <p>1. App öffnen: <span className="font-mono">stud-i-agency-check.vercel.app</span></p>
+                <p>1. App öffnen: <span className="font-mono">stud-i-agency-chek.vercel.app</span></p>
                 <p>2. "Als Lernende:r einloggen" klicken</p>
                 <p>3. Code eingeben: <span className="font-mono font-bold text-blue-600">{generatedCode}</span></p>
                 <p>4. Fertig! → Automatisch als <strong>{apprenticeName}</strong> eingeloggt</p>

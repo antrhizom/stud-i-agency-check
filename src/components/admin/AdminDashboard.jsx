@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { db, functions } from '../../firebase';
+import { db } from '../../firebase';
 import {
   addDoc,
   collection,
@@ -9,12 +9,10 @@ import {
   orderBy,
   query,
   updateDoc,
-  deleteDoc,
   where,
   Timestamp
 } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { LogOut, Users, KeyRound, Plus, RefreshCw, UserPlus, Trash2 } from 'lucide-react';
+import { LogOut, Users, KeyRound, Plus, RefreshCw } from 'lucide-react';
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -25,7 +23,7 @@ function generateCode() {
 
 export default function AdminDashboard() {
   const { signOut, userData } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview'); // overview | teachers | classes | external
+  const [activeTab, setActiveTab] = useState('overview'); // overview | classes | external
   const [loading, setLoading] = useState(false);
 
   const [teachers, setTeachers] = useState([]);
@@ -34,13 +32,6 @@ export default function AdminDashboard() {
 
   const [selectedLearnerId, setSelectedLearnerId] = useState('');
   const [externalCodes, setExternalCodes] = useState([]);
-
-  // Neue Lehrperson Formular
-  const [newTeacherEmail, setNewTeacherEmail] = useState('');
-  const [newTeacherName, setNewTeacherName] = useState('');
-  const [newTeacherPassword, setNewTeacherPassword] = useState('');
-  const [showTeacherForm, setShowTeacherForm] = useState(false);
-  const [createdTeacherInfo, setCreatedTeacherInfo] = useState(null);
 
   const teachersById = useMemo(() => {
     const m = new Map();
@@ -106,63 +97,13 @@ export default function AdminDashboard() {
     }
   };
 
-  // Lehrperson erstellen (direkt in Firestore, ohne Cloud Function)
-  const createTeacher = async () => {
-    if (!newTeacherEmail || !newTeacherName) {
-      alert('Bitte E-Mail und Name eingeben.');
-      return;
-    }
-    setLoading(true);
-    try {
-      // Versuche Cloud Function
-      const createTeacherFn = httpsCallable(functions, 'createTeacher');
-      const result = await createTeacherFn({
-        email: newTeacherEmail,
-        name: newTeacherName,
-        company: 'ABU zirkulär kompetent'
-      });
-
-      setCreatedTeacherInfo({
-        email: result.data.email,
-        password: result.data.password
-      });
-
-      setNewTeacherEmail('');
-      setNewTeacherName('');
-      await loadAll();
-      alert('Lehrperson erfolgreich erstellt!');
-    } catch (e) {
-      console.error('Fehler beim Erstellen:', e);
-      alert('Fehler: ' + (e?.message || String(e)));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Lehrperson löschen
-  const deleteTeacher = async (teacherId) => {
-    if (!confirm('Lehrperson wirklich löschen?')) return;
-    setLoading(true);
-    try {
-      const deleteUserFn = httpsCallable(functions, 'deleteUser');
-      await deleteUserFn({ uid: teacherId });
-      await loadAll();
-      alert('Lehrperson gelöscht.');
-    } catch (e) {
-      console.error('Fehler beim Löschen:', e);
-      alert('Fehler: ' + (e?.message || String(e)));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">stud-i-agency-check</h1>
-            <p className="text-sm text-gray-600">Admin · ABU zirkulär kompetent</p>
+            <h1 className="text-xl font-bold text-gray-900">stud-i-agency-chek</h1>
+            <p className="text-sm text-gray-600">Admin · ABU Fahrzeugberufe</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -192,13 +133,6 @@ export default function AdminDashboard() {
           >
             <Users className="w-4 h-4" />
             Übersicht
-          </button>
-          <button
-            onClick={() => setActiveTab('teachers')}
-            className={`px-4 py-2 rounded-lg border flex items-center gap-2 ${activeTab==='teachers' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'}`}
-          >
-            <UserPlus className="w-4 h-4" />
-            Lehrpersonen
           </button>
           <button
             onClick={() => setActiveTab('classes')}
@@ -238,88 +172,6 @@ export default function AdminDashboard() {
               Hinweis: Lehrpersonen legen Klassen an und nehmen Lernende klassenweise auf.
               Der Admin kann hier zusätzlich externe Codes pro Lernende erzeugen.
             </p>
-          </div>
-        )}
-
-        {activeTab === 'teachers' && (
-          <div className="bg-white rounded-2xl shadow-sm border p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">Lehrpersonen verwalten</h2>
-              <button
-                onClick={() => setShowTeacherForm(!showTeacherForm)}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white flex items-center gap-2"
-              >
-                <UserPlus className="w-4 h-4" />
-                Neue Lehrperson
-              </button>
-            </div>
-
-            {showTeacherForm && (
-              <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                <h3 className="font-semibold mb-3">Neue Lehrperson erstellen</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                    <input
-                      type="text"
-                      value={newTeacherName}
-                      onChange={(e) => setNewTeacherName(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border"
-                      placeholder="Max Muster"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
-                    <input
-                      type="email"
-                      value={newTeacherEmail}
-                      onChange={(e) => setNewTeacherEmail(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border"
-                      placeholder="max.muster@schule.ch"
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={createTeacher}
-                  disabled={loading}
-                  className="mt-4 px-4 py-2 rounded-lg bg-green-600 text-white flex items-center gap-2 disabled:opacity-50"
-                >
-                  <Plus className="w-4 h-4" />
-                  {loading ? 'Wird erstellt...' : 'Lehrperson erstellen'}
-                </button>
-
-                {createdTeacherInfo && (
-                  <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
-                    <p className="font-semibold text-green-800">Lehrperson erstellt!</p>
-                    <p className="text-sm">E-Mail: <strong>{createdTeacherInfo.email}</strong></p>
-                    <p className="text-sm">Passwort: <strong>{createdTeacherInfo.password}</strong></p>
-                    <p className="text-xs text-green-700 mt-2">Bitte diese Daten der Lehrperson mitteilen!</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {teachers.length === 0 ? (
-                <p className="text-sm text-gray-600">Noch keine Lehrpersonen vorhanden.</p>
-              ) : (
-                teachers.map(t => (
-                  <div key={t.id} className="rounded-xl border p-4 flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold">{t.name || 'Unbenannt'}</div>
-                      <div className="text-sm text-gray-600">{t.email}</div>
-                    </div>
-                    <button
-                      onClick={() => deleteTeacher(t.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                      title="Lehrperson löschen"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         )}
 

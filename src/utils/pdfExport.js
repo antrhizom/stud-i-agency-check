@@ -48,11 +48,11 @@ export const exportStatisticsToPDF = async (data) => {
   pdf.setFontSize(24);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(255, 255, 255);
-  pdf.text('stud-i-agency-check', margin, 20);
-
+  pdf.text('stud-i-agency-chek', margin, 20);
+  
   pdf.setFontSize(12);
   pdf.setFont('helvetica', 'normal');
-  pdf.text('ABU zirkulär kompetent · EBA Kanton Zürich', margin, 30);
+  pdf.text('Automobilfachmann/-frau EFZ', margin, 30);
   
   yPos = 50;
 
@@ -240,7 +240,7 @@ export const exportStatisticsToPDF = async (data) => {
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
   pdf.setTextColor(150, 150, 150);
-  pdf.text('Generiert mit stud-i-agency-check · ABU zirkulär kompetent © 2026', pageWidth / 2, pageHeight - 10, { align: 'center' });
+  pdf.text('Generiert mit stud-i-agency-chek © 2026', pageWidth / 2, pageHeight - 10, { align: 'center' });
 
   // Download
   const fileName = `${apprenticeName.replace(/\s+/g, '-')}_Statistik_${new Date().toISOString().split('T')[0]}.pdf`;
