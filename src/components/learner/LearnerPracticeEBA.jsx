@@ -323,46 +323,54 @@ const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus
         );
       })}
 
-      {/* Optionale Sprachmodi - auch klickbar */}
-      {kompetenz.sprachmodiOptional && kompetenz.sprachmodiOptional.length > 0 && (
-        <div className="mt-3">
-          <p className="text-xs text-purple-600 font-medium mb-2">
-            <Sparkles className="w-3 h-3 inline mr-1" />
-            Weitere Sprachmodi (optional):
-          </p>
-          {kompetenz.sprachmodiOptional.map((modusId, idx) => {
-            const modus = getSprachmodusById(modusId);
-            const optionalCount = existingEntries.filter(e =>
-              e.type === 'sprachmodus' &&
-              e.kompetenzId === kompetenz.id &&
-              e.modus === modusId &&
-              e.isOptional === true
-            ).length;
-            return (
-              <ClickableInhalt
-                key={`sprache-opt-${modusId}`}
-                type="sprachmodus"
-                label={modus?.label || modusId}
-                code={modus?.code}
-                inhalt="(Optionaler Sprachmodus - freiwillig)"
-                bgColor="#F3E8FF"
-                textColor="#7C3AED"
-                icon={MessageSquare}
-                entryCount={optionalCount}
-                onSave={(formData) => onSaveSprachmodus({
-                  kompetenzId: kompetenz.id,
-                  themaId: thema.id,
-                  modus: modusId,
-                  inhalt: `Optionaler Sprachmodus: ${modus?.label || modusId}`,
-                  inhaltIdx: idx,
-                  isOptional: true,
-                  ...formData
-                })}
-              />
-            );
-          })}
-        </div>
-      )}
+      {/* Alle weiteren Sprachmodi (die nicht als Pflicht definiert sind) */}
+      {(() => {
+        // IDs der Pflicht-Sprachmodi für diese Kompetenz
+        const pflichtModusIds = kompetenz.sprachmpiPflicht.map(sp => sp.modus);
+        // Alle 9 Sprachmodi, die NICHT Pflicht sind
+        const weitereSprachmodi = sprachmodi.filter(sm => !pflichtModusIds.includes(sm.id));
+
+        if (weitereSprachmodi.length === 0) return null;
+
+        return (
+          <div className="mt-3">
+            <p className="text-xs text-purple-600 font-medium mb-2">
+              <Sparkles className="w-3 h-3 inline mr-1" />
+              Weitere Sprachmodi (optional - {weitereSprachmodi.length} verfügbar):
+            </p>
+            {weitereSprachmodi.map((modus, idx) => {
+              const optionalCount = existingEntries.filter(e =>
+                e.type === 'sprachmodus' &&
+                e.kompetenzId === kompetenz.id &&
+                e.modus === modus.id &&
+                e.isOptional === true
+              ).length;
+              return (
+                <ClickableInhalt
+                  key={`sprache-opt-${modus.id}`}
+                  type="sprachmodus"
+                  label={modus.label}
+                  code={modus.code}
+                  inhalt="(Zusätzlicher Sprachmodus - freiwillig)"
+                  bgColor="#F3E8FF"
+                  textColor="#7C3AED"
+                  icon={MessageSquare}
+                  entryCount={optionalCount}
+                  onSave={(formData) => onSaveSprachmodus({
+                    kompetenzId: kompetenz.id,
+                    themaId: thema.id,
+                    modus: modus.id,
+                    inhalt: `Zusätzlicher Sprachmodus: ${modus.label}`,
+                    inhaltIdx: idx,
+                    isOptional: true,
+                    ...formData
+                  })}
+                />
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Schlüsselkompetenzen des Themas - klickbar */}
       {thema.schluesselkompetenzen && thema.schluesselkompetenzen.length > 0 && (
