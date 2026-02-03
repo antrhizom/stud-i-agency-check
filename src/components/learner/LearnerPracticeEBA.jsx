@@ -46,12 +46,12 @@ import {
 import ZirkularitaetDashboard from './ZirkularitaetDashboard';
 
 // ============================================
-// STATUS OPTIONS
+// STATUS OPTIONS (Gewichtete Stufen)
 // ============================================
 const STATUS_OPTIONS = [
-  { id: 'geuebt', label: 'geübt', color: '#FEF3C7' },
-  { id: 'verbessert', label: 'verbessert', color: '#DBEAFE' },
-  { id: 'erreicht', label: 'erreicht', color: '#DCFCE7' }
+  { id: 'kurz', label: 'kurz geübt', color: '#FEF3C7', weight: 1 },
+  { id: 'mittel', label: 'mittel geübt', color: '#FED7AA', weight: 2 },
+  { id: 'stark', label: 'stark geübt', color: '#DCFCE7', weight: 3 }
 ];
 
 const HOW_OPTIONS = [
@@ -136,7 +136,7 @@ const Counter = ({ value, onChange, min = 0, max = 99 }) => {
 const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: Icon, onSave, entryCount = 0 }) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
-    status: 'geuebt',
+    status: 'kurz',
     howMethod: '',
     howCount: 1,
     note: ''
@@ -148,7 +148,7 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
       return;
     }
     onSave(formData);
-    setFormData({ status: 'geuebt', howMethod: '', howCount: 1, note: '' });
+    setFormData({ status: 'kurz', howMethod: '', howCount: 1, note: '' });
     setShowForm(false);
   };
 
