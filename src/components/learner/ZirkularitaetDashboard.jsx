@@ -411,27 +411,6 @@ export default function ZirkularitaetDashboard({ entries = [] }) {
           </div>
         </div>
 
-        {/* Themen-Fortschritt */}
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Fortschritt pro Thema</h3>
-          <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-            {stats.themenStats.map(thema => (
-              <div
-                key={thema.id}
-                className="rounded-lg p-3 text-center"
-                style={{ backgroundColor: THEMA_COLORS[thema.id] + '20' }}
-              >
-                <div
-                  className="text-lg font-bold"
-                  style={{ color: THEMA_COLORS[thema.id] }}
-                >
-                  {thema.count}
-                </div>
-                <div className="text-[10px] text-gray-600">T{thema.order}</div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Detailansicht pro Thema */}
