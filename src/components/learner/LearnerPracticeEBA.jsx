@@ -240,6 +240,10 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
 
 // Kompetenz Card mit klickbaren Einzelinhalten
 const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus, onSaveSchluessel, existingEntries = [] }) => {
+  // Collapse state für optionale Sektionen (standardmässig eingeklappt)
+  const [showOptionalSprachmodi, setShowOptionalSprachmodi] = useState(false);
+  const [showSchluesselkompetenzen, setShowSchluesselkompetenzen] = useState(false);
+
   // Zähle Einträge pro Inhalt
   const getGesellschaftCount = (bereich, inhaltIdx) => {
     return existingEntries.filter(e =>
@@ -334,11 +338,15 @@ const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus
 
         return (
           <div className="mt-3">
-            <p className="text-xs text-purple-600 font-medium mb-2">
-              <Sparkles className="w-3 h-3 inline mr-1" />
-              Weitere Sprachmodi (optional - {weitereSprachmodi.length} verfügbar):
-            </p>
-            {weitereSprachmodi.map((modus, idx) => {
+            <button
+              onClick={() => setShowOptionalSprachmodi(!showOptionalSprachmodi)}
+              className="flex items-center gap-1 text-xs text-purple-600 font-medium mb-2 hover:text-purple-800"
+            >
+              {showOptionalSprachmodi ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              <Sparkles className="w-3 h-3" />
+              Weitere Sprachmodi (optional - {weitereSprachmodi.length} verfügbar)
+            </button>
+            {showOptionalSprachmodi && weitereSprachmodi.map((modus, idx) => {
               const optionalCount = existingEntries.filter(e =>
                 e.type === 'sprachmodus' &&
                 e.kompetenzId === kompetenz.id &&
@@ -375,11 +383,16 @@ const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus
       {/* Schlüsselkompetenzen des Themas - klickbar */}
       {thema.schluesselkompetenzen && thema.schluesselkompetenzen.length > 0 && (
         <div className="mt-3">
-          <p className="text-xs font-medium mb-2" style={{ color: uiColors.schluessel.text }}>
-            <Target className="w-3 h-3 inline mr-1" />
-            Schlüsselkompetenzen (Pflicht):
-          </p>
-          {thema.schluesselkompetenzen.map(skId => {
+          <button
+            onClick={() => setShowSchluesselkompetenzen(!showSchluesselkompetenzen)}
+            className="flex items-center gap-1 text-xs font-medium mb-2 hover:opacity-80"
+            style={{ color: uiColors.schluessel.text }}
+          >
+            {showSchluesselkompetenzen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <Target className="w-3 h-3" />
+            Schlüsselkompetenzen (Pflicht - {thema.schluesselkompetenzen.length})
+          </button>
+          {showSchluesselkompetenzen && thema.schluesselkompetenzen.map(skId => {
             const sk = getSchluesselkompetenzById(skId);
             return (
               <ClickableInhalt
