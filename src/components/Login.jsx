@@ -75,10 +75,10 @@ const Login = () => {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {/* Logo und Titel */}
           <div className="text-center mb-8">
-            <img 
-              src="/logo.png" 
-              alt="stud-i-agency-chek Logo" 
-              className="w-32 h-32 mx-auto mb-4 rounded-lg"
+            <img
+              src="/LogoABU_DNA.png"
+              alt="stud-i-agency-chek Logo"
+              className="w-24 h-24 mx-auto mb-4 object-contain"
             />
             <h1 className="text-3xl font-bold text-gray-900 mb-2">stud-i-agency-chek</h1>
             <p className="text-gray-600 text-sm">
