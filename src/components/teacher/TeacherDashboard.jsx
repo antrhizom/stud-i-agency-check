@@ -6,6 +6,7 @@ import {
   collection,
   doc,
   getDocs,
+  deleteDoc,
   orderBy,
   query,
   updateDoc,
@@ -13,7 +14,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { themes, competencies } from '../../data/curriculum';
-import { LogOut, Users, Plus, Copy, Search, MessageSquare, Download } from 'lucide-react';
+import { LogOut, Users, Plus, Copy, Search, MessageSquare, Download, Trash2, Check, Clock } from 'lucide-react';
 
 const CODE_EMAIL_DOMAIN = 'studiagency-check.ch';
 
@@ -44,6 +45,7 @@ export default function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('classes');
   const [classes, setClasses] = useState([]);
   const [learners, setLearners] = useState([]);
+  const [learnerCodes, setLearnerCodes] = useState([]); // Alle Codes (auch nicht eingeloggte)
 
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedLearnerId, setSelectedLearnerId] = useState('');
@@ -63,27 +65,35 @@ export default function TeacherDashboard() {
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
-  // Load classes + learners
-  useEffect(() => {
+  // Load classes + learners + learnerCodes
+  const loadData = async () => {
     if (!currentUser) return;
 
-    const load = async () => {
-      const cq = query(collection(db, 'classes'), where('teacherId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
-      const cs = await getDocs(cq);
-      const cls = cs.docs.map(d => ({ id: d.id, ...d.data() }));
-      setClasses(cls);
-      if (!selectedClassId && cls.length) setSelectedClassId(cls[0].id);
+    // Klassen laden
+    const cq = query(collection(db, 'classes'), where('teacherId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
+    const cs = await getDocs(cq);
+    const cls = cs.docs.map(d => ({ id: d.id, ...d.data() }));
+    setClasses(cls);
+    if (!selectedClassId && cls.length) setSelectedClassId(cls[0].id);
 
-      const lq = query(collection(db, 'users'), where('role', '==', 'learner'), where('teacherId', '==', currentUser.uid));
-      const ls = await getDocs(lq);
-      const lrn = ls.docs.map(d => ({ id: d.id, ...d.data() }));
-      // stabil sort
-      lrn.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-      setLearners(lrn);
-      if (!selectedLearnerId && lrn.length) setSelectedLearnerId(lrn[0].id);
-    };
+    // Eingeloggte Lernende laden
+    const lq = query(collection(db, 'users'), where('role', '==', 'learner'), where('teacherId', '==', currentUser.uid));
+    const ls = await getDocs(lq);
+    const lrn = ls.docs.map(d => ({ id: d.id, ...d.data() }));
+    lrn.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    setLearners(lrn);
+    if (!selectedLearnerId && lrn.length) setSelectedLearnerId(lrn[0].id);
 
-    load().catch(console.error);
+    // Alle Lernenden-Codes laden (auch nicht eingeloggte)
+    const lcq = query(collection(db, 'learnerCodes'), where('teacherId', '==', currentUser.uid));
+    const lcs = await getDocs(lcq);
+    const codes = lcs.docs.map(d => ({ id: d.id, ...d.data() }));
+    codes.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    setLearnerCodes(codes);
+  };
+
+  useEffect(() => {
+    loadData().catch(console.error);
   }, [currentUser]);
 
   // Load practice entries for selected learner
@@ -106,6 +116,26 @@ export default function TeacherDashboard() {
 
     load().catch(console.error);
   }, [selectedLearnerId]);
+
+  // Kombiniere eingeloggte Lernende und nicht eingeloggte Codes
+  const allLearnersByClass = useMemo(() => {
+    const map = {};
+
+    // Erst die Codes (alle)
+    for (const code of learnerCodes) {
+      const cid = code.classId || 'ohne-klasse';
+      map[cid] = map[cid] || [];
+      // Prüfe ob bereits eingeloggt
+      const loggedInUser = learners.find(l => l.code === code.code);
+      map[cid].push({
+        ...code,
+        isLoggedIn: !!loggedInUser,
+        loggedInUser: loggedInUser || null
+      });
+    }
+
+    return map;
+  }, [learners, learnerCodes]);
 
   const learnersByClass = useMemo(() => {
     const map = {};
@@ -149,6 +179,42 @@ export default function TeacherDashboard() {
     }
   };
 
+  const deleteClass = async (classId) => {
+    if (!confirm('Klasse wirklich löschen? Alle zugehörigen Lernenden-Codes werden ebenfalls gelöscht.')) return;
+
+    try {
+      // Lösche alle Codes dieser Klasse
+      const codesToDelete = learnerCodes.filter(c => c.classId === classId);
+      for (const code of codesToDelete) {
+        await deleteDoc(doc(db, 'learnerCodes', code.id));
+      }
+
+      // Lösche die Klasse
+      await deleteDoc(doc(db, 'classes', classId));
+
+      // UI aktualisieren
+      setClasses(prev => prev.filter(c => c.id !== classId));
+      setLearnerCodes(prev => prev.filter(c => c.classId !== classId));
+
+      if (selectedClassId === classId) {
+        setSelectedClassId(classes.find(c => c.id !== classId)?.id || '');
+      }
+    } catch (err) {
+      alert('Fehler beim Löschen: ' + (err?.message || String(err)));
+    }
+  };
+
+  const deleteLearnerCode = async (codeId) => {
+    if (!confirm('Lernenden-Code wirklich löschen?')) return;
+
+    try {
+      await deleteDoc(doc(db, 'learnerCodes', codeId));
+      setLearnerCodes(prev => prev.filter(c => c.id !== codeId));
+    } catch (err) {
+      alert('Fehler beim Löschen: ' + (err?.message || String(err)));
+    }
+  };
+
   const openCodeModal = () => {
     if (!classes.length) {
       alert('Bitte zuerst eine Klasse anlegen.');
@@ -187,6 +253,9 @@ export default function TeacherDashboard() {
       out.push({ tier, code });
     }
     setGenerated(out);
+
+    // Daten neu laden
+    await loadData();
   };
 
   const downloadCSV = () => {
@@ -287,16 +356,32 @@ export default function TeacherDashboard() {
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
-              {classes.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => setSelectedClassId(c.id)}
-                  className={`text-left border rounded-xl p-4 hover:bg-gray-50 ${selectedClassId===c.id ? 'border-blue-600' : 'border-gray-200'}`}
-                >
-                  <div className="font-medium">{c.name}</div>
-                  <div className="text-sm text-gray-600">{(learnersByClass[c.id] || []).length} Lernende</div>
-                </button>
-              ))}
+              {classes.map(c => {
+                const codesInClass = allLearnersByClass[c.id] || [];
+                const loggedInCount = codesInClass.filter(x => x.isLoggedIn).length;
+                return (
+                  <div
+                    key={c.id}
+                    className={`border rounded-xl p-4 hover:bg-gray-50 ${selectedClassId===c.id ? 'border-blue-600' : 'border-gray-200'}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <button onClick={() => setSelectedClassId(c.id)} className="text-left flex-1">
+                        <div className="font-medium">{c.name}</div>
+                        <div className="text-sm text-gray-600">
+                          {codesInClass.length} Codes · {loggedInCount} eingeloggt
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => deleteClass(c.id)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                        title="Klasse löschen"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="mt-6">
@@ -314,31 +399,70 @@ export default function TeacherDashboard() {
           <div className="bg-white rounded-2xl shadow p-6">
             <h2 className="text-lg font-semibold mb-4">Lernende</h2>
 
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="md:w-1/3 space-y-3">
-                <label className="text-sm text-gray-600">Klasse</label>
-                <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+            <div className="mb-4">
+              <label className="text-sm text-gray-600">Klasse filtern</label>
+              <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="w-full border rounded-lg px-3 py-2 mt-1">
+                <option value="">Alle Klassen</option>
+                {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
 
-                <label className="text-sm text-gray-600">Lernende auswählen</label>
-                <select value={selectedLearnerId} onChange={(e) => setSelectedLearnerId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                  {filteredLearners.map(l => <option key={l.id} value={l.id}>{l.name || l.displayName || l.email}</option>)}
-                </select>
-              </div>
-
-              <div className="md:flex-1">
-                {selectedLearner ? (
-                  <div className="border rounded-xl p-4">
-                    <div className="font-semibold">{selectedLearner.name || selectedLearner.displayName}</div>
-                    <div className="text-sm text-gray-600">Klasse: {themeById[selectedLearner.classId]?.name || (classes.find(c => c.id===selectedLearner.classId)?.name || '—')}</div>
-                    <div className="text-sm text-gray-600">Einträge: {practiceEntries.length}</div>
-                    <div className="text-sm text-gray-600 mt-2">Hinweis: Externe Zugänge erstellt der Admin.</div>
+            {/* Alle Lernenden-Codes anzeigen */}
+            <div className="space-y-2">
+              {(selectedClassId ? (allLearnersByClass[selectedClassId] || []) : learnerCodes.map(code => ({
+                ...code,
+                isLoggedIn: !!learners.find(l => l.code === code.code),
+                loggedInUser: learners.find(l => l.code === code.code) || null
+              }))).map(item => {
+                const className = classes.find(c => c.id === item.classId)?.name || '—';
+                return (
+                  <div key={item.id} className="border rounded-xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {item.isLoggedIn ? (
+                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                          <Check className="w-4 h-4 text-green-600" />
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                          <Clock className="w-4 h-4 text-gray-400" />
+                        </div>
+                      )}
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className="text-sm text-gray-500">
+                          Code: <span className="font-mono">{item.code}</span> · {className}
+                          {item.isLoggedIn ? (
+                            <span className="ml-2 text-green-600">✓ Eingeloggt</span>
+                          ) : (
+                            <span className="ml-2 text-gray-400">Noch nicht eingeloggt</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => copyCode(item.code)}
+                        className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg"
+                        title="Code kopieren"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteLearnerCode(item.id)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                        title="Löschen"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <div className="text-gray-600">Keine Lernenden gefunden.</div>
-                )}
-              </div>
+                );
+              })}
+              {learnerCodes.length === 0 && (
+                <div className="text-gray-500 text-center py-8">
+                  Noch keine Lernenden-Codes erstellt.
+                </div>
+              )}
             </div>
           </div>
         )}
