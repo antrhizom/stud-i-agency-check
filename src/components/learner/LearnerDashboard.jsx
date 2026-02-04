@@ -29,7 +29,7 @@ function ymd(d) {
 
 export default function LearnerDashboard() {
   const { signOut, userData, currentUser } = useAuth();
-  const [activeMode, setActiveMode] = useState('eba'); // 'eba' | 'fahrzeug'
+  const [activeMode, setActiveMode] = useState('eba'); // 'eba' | 'efz'
   const [activeTab, setActiveTab] = useState('practice'); // practice | entries | stats
 
   const [loading, setLoading] = useState(false);
@@ -204,16 +204,9 @@ export default function LearnerDashboard() {
                 }`}
               >
                 <GraduationCap className="w-4 h-4 inline mr-1" />
-                ABU EBA (2-jährig)
+                ABU 2030 EBA
               </button>
-              <button
-                onClick={() => setActiveMode('fahrzeug')}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                  activeMode === 'fahrzeug' ? 'bg-white text-cyan-700' : 'text-white/80 hover:text-white'
-                }`}
-              >
-                ABU Fahrzeugberufe
-              </button>
+              {/* EFZ-Button ausgeblendet - nur EBA unterstützt */}
             </div>
           </div>
         </div>
@@ -226,7 +219,7 @@ export default function LearnerDashboard() {
             <div>
               <h1 className="text-xl font-bold text-gray-900">stud-i-agency-chek</h1>
               <p className="text-sm text-gray-600">
-                {userData?.name || userData?.displayName || 'Lernende:r'} · ABU Fahrzeugberufe
+                {userData?.name || userData?.displayName || 'Lernende:r'} · ABU 2030 EBA
               </p>
             </div>
           </div>

@@ -1,4 +1,4 @@
-// stud-i-agency-chek – ABU Fahrzeugberufe (EBA)
+// stud-i-agency-chek – ABU 2030 EBA (2-jährige Grundbildung)
 // Zirkulär, themenbasiert, mit Üben innerhalb (Pflichtprogramm) und ausserhalb von Themen.
 
 export const changeTags = [
