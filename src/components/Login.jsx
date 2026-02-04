@@ -77,10 +77,10 @@ const Login = () => {
           <div className="text-center mb-8">
             <img
               src="/LogoABU_DNA.png"
-              alt="stud-i-agency-chek Logo"
+              alt="stud-i-agency-check Logo"
               className="w-24 h-24 mx-auto mb-4 object-contain"
             />
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">stud-i-agency-chek</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">stud-i-agency-check</h1>
             <p className="text-gray-600 text-sm">
               Lernplattform für die Grundbildung Automobilfachmann/-frau EFZ
             </p>
@@ -202,7 +202,7 @@ const Login = () => {
 
         {/* Footer */}
         <p className="text-center text-gray-500 text-sm mt-8">
-          © 2025 stud-i-agency-chek · Digitale Berufslehre
+          © 2025 stud-i-agency-check · Digitale Berufslehre
         </p>
       </div>
     </div>
