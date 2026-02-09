@@ -63,6 +63,15 @@ const WHERE_OPTIONS = [
   'Sonstige'
 ];
 
+const HOW_OPTIONS = [
+  'mit einem handlungskompetenzorientierten Produkt',
+  'mit digitalen Lernübungen',
+  'mit Medienproduktionen',
+  'mit Mediengestaltung',
+  'mit Reflexion',
+  'Sonstige'
+];
+
 // ============================================
 // HELPER COMPONENTS
 // ============================================
@@ -134,6 +143,7 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
   const [formData, setFormData] = useState({
     status: 'kurz',
     howMethod: '',
+    howLearned: '',
     note: ''
   });
 
@@ -142,8 +152,12 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
       alert('Bitte wähle einen Ort aus.');
       return;
     }
+    if (!formData.howLearned) {
+      alert('Bitte wähle aus, wie du geübt hast.');
+      return;
+    }
     onSave(formData);
-    setFormData({ status: 'kurz', howMethod: '', note: '' });
+    setFormData({ status: 'kurz', howMethod: '', howLearned: '', note: '' });
     setShowForm(false);
   };
 
@@ -195,7 +209,7 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
             ))}
           </div>
 
-          {/* Wo geübt */}
+          {/* Wo & Wie geübt */}
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[150px]">
               <label className="text-xs text-gray-600 block mb-1">Wo geübt?</label>
@@ -206,6 +220,19 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
               >
                 <option value="">— wählen —</option>
                 {WHERE_OPTIONS.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="text-xs text-gray-600 block mb-1">Wie geübt?</label>
+              <select
+                value={formData.howLearned}
+                onChange={(e) => setFormData(prev => ({ ...prev, howLearned: e.target.value }))}
+                className="w-full px-2 py-1.5 border rounded text-xs"
+              >
+                <option value="">— wählen —</option>
+                {HOW_OPTIONS.map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
                 ))}
               </select>
@@ -415,9 +442,13 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
   };
 
   const handleSave = (ttId) => {
-    const data = formData[ttId] || { howMethod: '', note: '' };
+    const data = formData[ttId] || { howMethod: '', howLearned: '', note: '' };
     if (!data.howMethod) {
       alert('Bitte wähle einen Ort aus.');
+      return;
+    }
+    if (!data.howLearned) {
+      alert('Bitte wähle aus, wie du geübt hast.');
       return;
     }
     onSave({
@@ -426,7 +457,7 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
       themaId: thema.id,
       ...data
     });
-    setFormData(prev => ({ ...prev, [ttId]: { howMethod: '', note: '' } }));
+    setFormData(prev => ({ ...prev, [ttId]: { howMethod: '', howLearned: '', note: '' } }));
     setExpanded(prev => ({ ...prev, [ttId]: false }));
   };
 
@@ -493,6 +524,19 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
                     >
                       <option value="">Wo geübt?</option>
                       {WHERE_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={data.howLearned || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        [tt.id]: { ...data, howLearned: e.target.value }
+                      }))}
+                      className="w-full px-2 py-1.5 border rounded text-sm"
+                    >
+                      <option value="">Wie geübt?</option>
+                      {HOW_OPTIONS.map(opt => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
@@ -630,7 +674,8 @@ const EntryDetailCard = ({ entry, onDelete }) => {
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
               <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
-                            {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
+              {entry.howLearned && <span className="text-gray-600">Wie: <strong>{entry.howLearned}</strong></span>}
+              {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
           </div>
           <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
@@ -664,7 +709,8 @@ const EntryDetailCard = ({ entry, onDelete }) => {
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
               <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
-                            {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
+              {entry.howLearned && <span className="text-gray-600">Wie: <strong>{entry.howLearned}</strong></span>}
+              {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
           </div>
           <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
@@ -696,7 +742,8 @@ const EntryDetailCard = ({ entry, onDelete }) => {
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
-                            {entry.createdAt && (
+              {entry.howLearned && <span className="text-gray-600">Wie: <strong>{entry.howLearned}</strong></span>}
+              {entry.createdAt && (
                 <span className="text-gray-400">
                   {entry.createdAt.toLocaleDateString('de-CH')}
                 </span>
@@ -735,7 +782,8 @@ const EntryDetailCard = ({ entry, onDelete }) => {
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
-                            {entry.createdAt && (
+              {entry.howLearned && <span className="text-gray-600">Wie: <strong>{entry.howLearned}</strong></span>}
+              {entry.createdAt && (
                 <span className="text-gray-400">
                   {entry.createdAt.toLocaleDateString('de-CH')}
                 </span>
