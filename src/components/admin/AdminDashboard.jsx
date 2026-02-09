@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { db } from '../../firebase';
+import { db, functions as firebaseFunctions } from '../../firebase';
 import {
   addDoc,
   collection,
@@ -12,7 +12,8 @@ import {
   where,
   Timestamp
 } from 'firebase/firestore';
-import { LogOut, Users, KeyRound, Plus, RefreshCw } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
+import { LogOut, Users, KeyRound, Plus, RefreshCw, UserPlus } from 'lucide-react';
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -23,7 +24,7 @@ function generateCode() {
 
 export default function AdminDashboard() {
   const { signOut, userData } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview'); // overview | classes | external
+  const [activeTab, setActiveTab] = useState('overview'); // overview | teachers | classes | external
   const [loading, setLoading] = useState(false);
 
   const [teachers, setTeachers] = useState([]);
@@ -32,6 +33,12 @@ export default function AdminDashboard() {
 
   const [selectedLearnerId, setSelectedLearnerId] = useState('');
   const [externalCodes, setExternalCodes] = useState([]);
+
+  // Lehrperson erstellen
+  const [newTeacherName, setNewTeacherName] = useState('');
+  const [newTeacherEmail, setNewTeacherEmail] = useState('');
+  const [newTeacherCompany, setNewTeacherCompany] = useState('');
+  const [createdTeacherResult, setCreatedTeacherResult] = useState(null);
 
   const teachersById = useMemo(() => {
     const m = new Map();
@@ -97,6 +104,32 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleCreateTeacher = async () => {
+    if (!newTeacherName.trim() || !newTeacherEmail.trim()) {
+      alert('Name und E-Mail sind Pflichtfelder.');
+      return;
+    }
+    setLoading(true);
+    setCreatedTeacherResult(null);
+    try {
+      const createTeacherFn = httpsCallable(firebaseFunctions, 'createTeacher');
+      const result = await createTeacherFn({
+        name: newTeacherName.trim(),
+        email: newTeacherEmail.trim(),
+        company: newTeacherCompany.trim() || null
+      });
+      setCreatedTeacherResult(result.data);
+      setNewTeacherName('');
+      setNewTeacherEmail('');
+      setNewTeacherCompany('');
+      await loadAll();
+    } catch (e) {
+      alert('Fehler beim Erstellen: ' + (e?.message || String(e)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
@@ -105,7 +138,7 @@ export default function AdminDashboard() {
             <img src="/LogoABU_DNA.png" alt="ABU Logo" className="h-10 w-10 object-contain" />
             <div>
               <h1 className="text-xl font-bold text-gray-900">stud-i-agency-chek</h1>
-              <p className="text-sm text-gray-600">Admin · ABU 2030 EBA</p>
+              <p className="text-sm text-gray-600">Admin · ABU Fahrzeugberufe</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -136,6 +169,13 @@ export default function AdminDashboard() {
           >
             <Users className="w-4 h-4" />
             Übersicht
+          </button>
+          <button
+            onClick={() => setActiveTab('teachers')}
+            className={`px-4 py-2 rounded-lg border flex items-center gap-2 ${activeTab==='teachers' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'}`}
+          >
+            <UserPlus className="w-4 h-4" />
+            Lehrpersonen
           </button>
           <button
             onClick={() => setActiveTab('classes')}
@@ -175,6 +215,85 @@ export default function AdminDashboard() {
               Hinweis: Lehrpersonen legen Klassen an und nehmen Lernende klassenweise auf.
               Der Admin kann hier zusätzlich externe Codes pro Lernende erzeugen.
             </p>
+          </div>
+        )}
+
+        {activeTab === 'teachers' && (
+          <div className="bg-white rounded-2xl shadow-sm border p-6">
+            <h2 className="text-lg font-bold mb-4">Lehrperson erstellen</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700">Name *</label>
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 rounded-lg border"
+                  placeholder="z.B. Maria Müller"
+                  value={newTeacherName}
+                  onChange={(e) => setNewTeacherName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">E-Mail *</label>
+                <input
+                  type="email"
+                  className="w-full mt-1 px-3 py-2 rounded-lg border"
+                  placeholder="z.B. maria.mueller@schule.ch"
+                  value={newTeacherEmail}
+                  onChange={(e) => setNewTeacherEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">Schule / Betrieb</label>
+                <input
+                  type="text"
+                  className="w-full mt-1 px-3 py-2 rounded-lg border"
+                  placeholder="z.B. BBW Winterthur (optional)"
+                  value={newTeacherCompany}
+                  onChange={(e) => setNewTeacherCompany(e.target.value)}
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={handleCreateTeacher}
+                  className="w-full px-4 py-2 rounded-lg bg-blue-600 text-white flex items-center justify-center gap-2"
+                  disabled={loading}
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Lehrperson erstellen
+                </button>
+              </div>
+            </div>
+
+            {createdTeacherResult && (
+              <div className="rounded-xl border border-green-300 bg-green-50 p-4 mb-6">
+                <h3 className="font-semibold text-green-800 mb-2">Lehrperson erfolgreich erstellt</h3>
+                <div className="text-sm space-y-1">
+                  <div><span className="font-medium">E-Mail:</span> {createdTeacherResult.email}</div>
+                  <div><span className="font-medium">Passwort:</span> <code className="bg-green-100 px-2 py-0.5 rounded">{createdTeacherResult.password}</code></div>
+                </div>
+                <p className="mt-2 text-xs text-green-700">
+                  Bitte notiere diese Zugangsdaten und gib sie der Lehrperson weiter. Das Passwort wird nur einmal angezeigt.
+                </p>
+              </div>
+            )}
+
+            <h2 className="text-lg font-bold mb-4">Vorhandene Lehrpersonen ({teachers.length})</h2>
+            {teachers.length === 0 ? (
+              <div className="text-sm text-gray-600">Noch keine Lehrpersonen vorhanden.</div>
+            ) : (
+              <div className="space-y-2">
+                {teachers.map(t => (
+                  <div key={t.id} className="rounded-xl border p-4 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-semibold">{t.name || t.displayName || '(kein Name)'}</div>
+                      <div className="text-sm text-gray-600">{t.email}</div>
+                      {t.schoolContext && <div className="text-sm text-gray-500">{t.schoolContext}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

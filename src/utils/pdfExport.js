@@ -52,7 +52,7 @@ export const exportStatisticsToPDF = async (data) => {
   
   pdf.setFontSize(12);
   pdf.setFont('helvetica', 'normal');
-  pdf.text('Allgemeinbildung · ABU 2030 EBA', margin, 30);
+  pdf.text('Automobilfachmann/-frau EFZ', margin, 30);
   
   yPos = 50;
 
