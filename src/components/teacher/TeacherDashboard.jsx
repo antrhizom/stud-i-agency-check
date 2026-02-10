@@ -86,26 +86,38 @@ export default function TeacherDashboard() {
       const allCodes = codesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
       // 4) Zusammenführen: existierende User + nicht-eingeloggte Codes
+      // Set aller User-IDs die bereits aus der users-Collection kommen
       const userIdSet = new Set(existingUsers.map(u => u.id));
-      const codeUserIds = new Set(allCodes.filter(c => c.userId).map(c => c.userId));
+
+      // Den Code zum existierenden User hinzufügen (damit der Code sichtbar ist)
+      for (const code of allCodes) {
+        if (code.userId && userIdSet.has(code.userId)) {
+          const user = existingUsers.find(u => u.id === code.userId);
+          if (user && !user.code) {
+            user.code = code.code;
+          }
+        }
+      }
 
       const combined = [...existingUsers];
 
-      // Codes ohne User-Eintrag als Platzhalter hinzufügen
+      // Nur Codes ohne User-Eintrag als Platzhalter hinzufügen
+      // (used=false ODER userId nicht in users vorhanden)
       for (const code of allCodes) {
-        if (!code.userId || !userIdSet.has(code.userId)) {
-          // Noch nicht eingeloggt - als Platzhalter anzeigen
-          combined.push({
-            id: `code-${code.id}`, // Prefix um Kollisionen zu vermeiden
-            _isCodeOnly: true, // Markierung: nur Code, kein User
-            _codeDocId: code.id,
-            name: code.name || '(ohne Name)',
-            classId: code.classId,
-            teacherId: code.teacherId,
-            code: code.code,
-            used: code.used || false
-          });
+        if (code.userId && userIdSet.has(code.userId)) {
+          // Dieser Code gehört zu einem existierenden User → überspringen (bereits oben)
+          continue;
         }
+        combined.push({
+          id: `code-${code.id}`,
+          _isCodeOnly: true,
+          _codeDocId: code.id,
+          name: code.name || '(ohne Name)',
+          classId: code.classId,
+          teacherId: code.teacherId,
+          code: code.code,
+          used: code.used || false
+        });
       }
 
       // Stabil sortieren
@@ -203,10 +215,33 @@ export default function TeacherDashboard() {
       return;
     }
 
-    const anzahl = Math.min(Math.max(1, codeAnzahl), TIER_NAMEN.length);
+    // Bereits vergebene Tier-Namen für diese Klasse prüfen
+    const existingCodesQuery = query(
+      collection(db, 'learnerCodes'),
+      where('teacherId', '==', currentUser.uid),
+      where('classId', '==', selectedClassId)
+    );
+    const existingCodesSnap = await getDocs(existingCodesQuery);
+    const usedTierNames = new Set(existingCodesSnap.docs.map(d => d.data().name));
 
-    // Shuffle Tier-Namen und nimm die ersten X
-    const shuffledTiere = [...TIER_NAMEN].sort(() => Math.random() - 0.5);
+    // Nur noch verfügbare Tier-Namen verwenden
+    const availableTiere = TIER_NAMEN.filter(t => !usedTierNames.has(t));
+
+    if (availableTiere.length === 0) {
+      alert(`Alle ${TIER_NAMEN.length} Tier-Namen sind für diese Klasse bereits vergeben.`);
+      return;
+    }
+
+    const anzahl = Math.min(Math.max(1, codeAnzahl), availableTiere.length);
+
+    if (anzahl < codeAnzahl) {
+      if (!confirm(`Nur noch ${availableTiere.length} Tier-Namen verfügbar (${usedTierNames.size} bereits vergeben). ${anzahl} Codes erstellen?`)) {
+        return;
+      }
+    }
+
+    // Shuffle verfügbare Tier-Namen und nimm die ersten X
+    const shuffledTiere = [...availableTiere].sort(() => Math.random() - 0.5);
     const ausgewaehlteTiere = shuffledTiere.slice(0, anzahl);
 
     const out = [];
@@ -214,7 +249,7 @@ export default function TeacherDashboard() {
       const code = generateCode();
       await addDoc(collection(db, 'learnerCodes'), {
         code,
-        name: tier, // Tier als Pseudonym
+        name: tier,
         teacherId: currentUser.uid,
         classId: selectedClassId,
         used: false,
