@@ -63,24 +63,55 @@ export default function TeacherDashboard() {
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
-  // Load classes + learners
+  // Load classes + learners (aus users UND learnerCodes zusammenführen)
   useEffect(() => {
     if (!currentUser) return;
 
     const load = async () => {
+      // 1) Klassen laden
       const cq = query(collection(db, 'classes'), where('teacherId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
       const cs = await getDocs(cq);
       const cls = cs.docs.map(d => ({ id: d.id, ...d.data() }));
       setClasses(cls);
       if (!selectedClassId && cls.length) setSelectedClassId(cls[0].id);
 
+      // 2) Eingeloggte Lernende aus users-Collection
       const lq = query(collection(db, 'users'), where('role', '==', 'learner'), where('teacherId', '==', currentUser.uid));
       const ls = await getDocs(lq);
-      const lrn = ls.docs.map(d => ({ id: d.id, ...d.data() }));
-      // stabil sort
-      lrn.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-      setLearners(lrn);
-      if (!selectedLearnerId && lrn.length) setSelectedLearnerId(lrn[0].id);
+      const existingUsers = ls.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // 3) Alle learnerCodes dieser Lehrperson laden (auch nicht-benutzte)
+      const codesQuery = query(collection(db, 'learnerCodes'), where('teacherId', '==', currentUser.uid));
+      const codesSnap = await getDocs(codesQuery);
+      const allCodes = codesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // 4) Zusammenführen: existierende User + nicht-eingeloggte Codes
+      const userIdSet = new Set(existingUsers.map(u => u.id));
+      const codeUserIds = new Set(allCodes.filter(c => c.userId).map(c => c.userId));
+
+      const combined = [...existingUsers];
+
+      // Codes ohne User-Eintrag als Platzhalter hinzufügen
+      for (const code of allCodes) {
+        if (!code.userId || !userIdSet.has(code.userId)) {
+          // Noch nicht eingeloggt - als Platzhalter anzeigen
+          combined.push({
+            id: `code-${code.id}`, // Prefix um Kollisionen zu vermeiden
+            _isCodeOnly: true, // Markierung: nur Code, kein User
+            _codeDocId: code.id,
+            name: code.name || '(ohne Name)',
+            classId: code.classId,
+            teacherId: code.teacherId,
+            code: code.code,
+            used: code.used || false
+          });
+        }
+      }
+
+      // Stabil sortieren
+      combined.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setLearners(combined);
+      if (!selectedLearnerId && combined.length) setSelectedLearnerId(combined[0].id);
     };
 
     load().catch(console.error);
@@ -88,7 +119,8 @@ export default function TeacherDashboard() {
 
   // Load practice entries for selected learner (aus practiceEntriesEBA)
   useEffect(() => {
-    if (!selectedLearnerId) {
+    if (!selectedLearnerId || selectedLearnerId.startsWith('code-')) {
+      // Code-only Lernende haben noch keine Einträge
       setPracticeEntries([]);
       return;
     }
@@ -340,17 +372,33 @@ export default function TeacherDashboard() {
 
                 <label className="text-sm text-gray-600">Lernende auswählen</label>
                 <select value={selectedLearnerId} onChange={(e) => setSelectedLearnerId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                  {filteredLearners.map(l => <option key={l.id} value={l.id}>{l.name || l.displayName || l.email}</option>)}
+                  {filteredLearners.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.name || l.displayName || l.email}{l._isCodeOnly ? ' (nicht eingeloggt)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div className="md:flex-1">
                 {selectedLearner ? (
                   <div className="border rounded-xl p-4">
-                    <div className="font-semibold">{selectedLearner.name || selectedLearner.displayName}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold">{selectedLearner.name || selectedLearner.displayName}</div>
+                      {selectedLearner._isCodeOnly ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300">noch nicht eingeloggt</span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 border border-green-300">aktiv</span>
+                      )}
+                    </div>
                     <div className="text-sm text-gray-600">Klasse: {classes.find(c => c.id === selectedLearner.classId)?.name || '—'}</div>
-                    <div className="text-sm text-gray-600">Einträge: {practiceEntries.length}</div>
-                    <div className="text-sm text-gray-600 mt-2">Hinweis: Externe Zugänge erstellt der Admin.</div>
+                    {selectedLearner.code && <div className="text-sm text-gray-600">Code: <span className="font-mono">{selectedLearner.code}</span></div>}
+                    {!selectedLearner._isCodeOnly && (
+                      <div className="text-sm text-gray-600">Einträge: {practiceEntries.length}</div>
+                    )}
+                    {selectedLearner._isCodeOnly && (
+                      <div className="text-sm text-yellow-700 mt-2">Diese:r Lernende hat sich noch nicht eingeloggt. Erst nach dem ersten Login werden Einträge sichtbar.</div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-gray-600">Keine Lernenden gefunden.</div>
@@ -372,7 +420,11 @@ export default function TeacherDashboard() {
                   {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <select value={selectedLearnerId} onChange={(e) => setSelectedLearnerId(e.target.value)} className="border rounded-lg px-3 py-2">
-                  {filteredLearners.map(l => <option key={l.id} value={l.id}>{l.name || l.displayName || l.email}</option>)}
+                  {filteredLearners.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.name || l.displayName || l.email}{l._isCodeOnly ? ' (nicht eingeloggt)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
