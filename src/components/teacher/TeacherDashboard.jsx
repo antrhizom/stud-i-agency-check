@@ -86,7 +86,7 @@ export default function TeacherDashboard() {
     load().catch(console.error);
   }, [currentUser]);
 
-  // Load practice entries for selected learner
+  // Load practice entries for selected learner (aus practiceEntriesEBA)
   useEffect(() => {
     if (!selectedLearnerId) {
       setPracticeEntries([]);
@@ -95,12 +95,17 @@ export default function TeacherDashboard() {
 
     const load = async () => {
       const pq = query(
-        collection(db, 'practiceEntries'),
-        where('learnerId', '==', selectedLearnerId),
-        orderBy('date', 'desc')
+        collection(db, 'practiceEntriesEBA'),
+        where('learnerId', '==', selectedLearnerId)
       );
       const ps = await getDocs(pq);
-      const data = ps.docs.map(d => ({ id: d.id, ...d.data(), date: d.data().date?.toDate?.() ? d.data().date.toDate() : null }));
+      const data = ps.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate?.() || null
+      }));
+      // Sortiere lokal nach createdAt (neueste zuerst)
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setPracticeEntries(data);
     };
 
@@ -220,7 +225,7 @@ export default function TeacherDashboard() {
     if (!noteEntryId) return;
     setSavingNote(true);
     try {
-      await updateDoc(doc(db, 'practiceEntries', noteEntryId), {
+      await updateDoc(doc(db, 'practiceEntriesEBA', noteEntryId), {
         teacherNote: noteText.trim() || null,
         teacherNoteAt: noteText.trim() ? Timestamp.now() : null
       });
@@ -236,6 +241,18 @@ export default function TeacherDashboard() {
     if (!selectedClassId) return learners;
     return learners.filter(l => l.classId === selectedClassId);
   }, [learners, selectedClassId]);
+
+  // Wenn Klasse wechselt: selectedLearnerId auf ersten Lernenden der neuen Klasse setzen
+  useEffect(() => {
+    if (filteredLearners.length > 0) {
+      // Nur wechseln, wenn der aktuelle Lernende nicht in der gefilterten Liste ist
+      if (!filteredLearners.find(l => l.id === selectedLearnerId)) {
+        setSelectedLearnerId(filteredLearners[0].id);
+      }
+    } else {
+      setSelectedLearnerId('');
+    }
+  }, [selectedClassId, filteredLearners]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -331,7 +348,7 @@ export default function TeacherDashboard() {
                 {selectedLearner ? (
                   <div className="border rounded-xl p-4">
                     <div className="font-semibold">{selectedLearner.name || selectedLearner.displayName}</div>
-                    <div className="text-sm text-gray-600">Klasse: {themeById[selectedLearner.classId]?.name || (classes.find(c => c.id===selectedLearner.classId)?.name || '—')}</div>
+                    <div className="text-sm text-gray-600">Klasse: {classes.find(c => c.id === selectedLearner.classId)?.name || '—'}</div>
                     <div className="text-sm text-gray-600">Einträge: {practiceEntries.length}</div>
                     <div className="text-sm text-gray-600 mt-2">Hinweis: Externe Zugänge erstellt der Admin.</div>
                   </div>
@@ -351,8 +368,11 @@ export default function TeacherDashboard() {
                 <p className="text-sm text-gray-600">Übungen/Kompetenzen (Pflichtprogramm & frei) pro Lernende</p>
               </div>
               <div className="flex gap-2">
+                <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="border rounded-lg px-3 py-2">
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
                 <select value={selectedLearnerId} onChange={(e) => setSelectedLearnerId(e.target.value)} className="border rounded-lg px-3 py-2">
-                  {learners.map(l => <option key={l.id} value={l.id}>{l.name || l.displayName || l.email}</option>)}
+                  {filteredLearners.map(l => <option key={l.id} value={l.id}>{l.name || l.displayName || l.email}</option>)}
                 </select>
               </div>
             </div>
@@ -362,26 +382,38 @@ export default function TeacherDashboard() {
             ) : (
               <div className="space-y-3">
                 {practiceEntries.map(e => {
-                  const c = competencyById[e.competencyId];
-                  const t = themes.find(x => x.id === e.themeId);
+                  // Typ-Label und Farbe
+                  const typeLabels = {
+                    gesellschaft: { label: 'Gesellschaftsinhalt', color: 'bg-emerald-100 text-emerald-800' },
+                    sprachmodus: { label: 'Sprachmodus', color: 'bg-blue-100 text-blue-800' },
+                    schluesselkompetenz: { label: 'Schlüsselkompetenz', color: 'bg-amber-100 text-amber-800' },
+                    transversal: { label: 'Transversales Thema', color: 'bg-purple-100 text-purple-800' }
+                  };
+                  const typeInfo = typeLabels[e.type] || { label: e.type || '—', color: 'bg-gray-100 text-gray-800' };
+
                   return (
                     <div key={e.id} className="border rounded-xl p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <div className="font-medium">{c ? c.title : e.competencyId}</div>
-                          <div className="text-sm text-gray-600">{ymd(e.date || new Date())} · {t ? t.title : 'ohne Thema'} · Status: {e.status}</div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeInfo.color}`}>{typeInfo.label}</span>
+                            {e.status && <span className="text-xs text-gray-500">{e.status}</span>}
+                          </div>
+                          {e.inhalt && <div className="text-sm text-gray-800">{e.inhalt}</div>}
+                          <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-600">
+                            {e.howMethod && <span>Wo: <strong>{e.howMethod}</strong></span>}
+                            {e.howLearned && <span>Wie: <strong>{e.howLearned}</strong></span>}
+                            {e.createdAt && <span className="text-gray-400">{e.createdAt.toLocaleDateString('de-CH')}</span>}
+                          </div>
                         </div>
                         <button onClick={() => startNote(e)} className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50">
                           <MessageSquare className="w-4 h-4" />
                           Notiz
                         </button>
                       </div>
-                      {(e.where || e.how || e.note) && (
-                        <div className="mt-3 text-sm text-gray-800 space-y-1">
-                          {e.where && <div><span className="text-gray-500">Wo:</span> {e.where}</div>}
-                          {e.how && <div><span className="text-gray-500">Wie:</span> {e.how}</div>}
-                          {e.note && <div><span className="text-gray-500">Notiz:</span> {e.note}</div>}
-                          {e.teacherNote && <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded"><span className="font-medium">Lehrperson:</span> {e.teacherNote}</div>}
+                      {e.teacherNote && (
+                        <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                          <span className="font-medium">Lehrperson:</span> {e.teacherNote}
                         </div>
                       )}
                     </div>
