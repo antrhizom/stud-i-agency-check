@@ -102,12 +102,25 @@ export default function TeacherDashboard() {
       const combined = [...existingUsers];
 
       // Nur Codes ohne User-Eintrag als Platzhalter hinzufügen
-      // (used=false ODER userId nicht in users vorhanden)
-      for (const code of allCodes) {
+      // Deduplizieren: pro Klasse + Tier-Name nur den neuesten Code nehmen
+      const seenKey = new Set();
+      // Sortiere Codes nach createdAt absteigend, damit der neueste zuerst kommt
+      const sortedCodes = [...allCodes].sort((a, b) => {
+        const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds * 1000 || 0;
+        const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds * 1000 || 0;
+        return bTime - aTime;
+      });
+
+      for (const code of sortedCodes) {
         if (code.userId && userIdSet.has(code.userId)) {
-          // Dieser Code gehört zu einem existierenden User → überspringen (bereits oben)
+          // Dieser Code gehört zu einem existierenden User → überspringen
           continue;
         }
+        // Deduplizierung: pro Klasse + Name nur einmal anzeigen
+        const dedupeKey = `${code.classId}__${code.name}`;
+        if (seenKey.has(dedupeKey)) continue;
+        seenKey.add(dedupeKey);
+
         combined.push({
           id: `code-${code.id}`,
           _isCodeOnly: true,
