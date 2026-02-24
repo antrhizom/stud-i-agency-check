@@ -44,7 +44,8 @@ import {
   ListChecks,
   Trash2,
   Send,
-  CheckCircle
+  CheckCircle,
+  Bell
 } from 'lucide-react';
 import ZirkularitaetDashboard from './ZirkularitaetDashboard';
 
@@ -665,12 +666,16 @@ const findKompetenzById = (kompetenzId) => {
 // Kommentar-Thread für Einträge
 const CommentThread = ({ entry, onReply }) => {
   if (!entry.teacherNote) return null;
+  const isNew = !entry.learnerReply; // Neu = Lehrperson hat kommentiert, aber keine Antwort
   return (
     <div className="mt-3 space-y-2 pt-3 border-t">
-      <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <div className={`text-sm rounded-lg p-3 ${isNew ? 'bg-amber-100 border-2 border-amber-400' : 'bg-amber-50 border border-amber-200'}`}>
         <div className="flex items-center gap-1.5 mb-1">
           <MessageSquare className="w-3.5 h-3.5 text-amber-600" />
           <span className="text-xs font-semibold text-amber-700">Kommentar der Lehrperson</span>
+          {isNew && (
+            <span className="ml-auto text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">Neu</span>
+          )}
         </div>
         <p className="text-gray-800 text-sm">{entry.teacherNote}</p>
       </div>
@@ -894,26 +899,31 @@ export default function LearnerPracticeEBA() {
     loadEntries();
   }, [currentUser]);
 
-  // Generischer Save-Handler
+  // Generischer Save-Handler – kein setLoading(true), damit ThemaCards nicht unmounten
   const saveEntry = async (data) => {
     if (!currentUser) return;
-    setLoading(true);
     try {
-      await addDoc(collection(db, 'practiceEntriesEBA'), {
+      const docRef = await addDoc(collection(db, 'practiceEntriesEBA'), {
         learnerId: currentUser.uid,
         teacherId: userData?.teacherId || null,
         classId: userData?.classId || null,
         ...data,
         createdAt: Timestamp.now()
       });
-      await loadEntries();
-      // Inline-Toast statt alert / kein Seitenwechsel
+      // Optimistisch hinzufügen: kein Re-Fetch, keine Akkordeon-Reset
+      const newEntry = {
+        id: docRef.id,
+        learnerId: currentUser.uid,
+        teacherId: userData?.teacherId || null,
+        classId: userData?.classId || null,
+        ...data,
+        createdAt: new Date()
+      };
+      setEntries(prev => [newEntry, ...prev]);
       setSaveToast(true);
       setTimeout(() => setSaveToast(false), 2500);
     } catch (err) {
       alert('Fehler: ' + (err?.message || String(err)));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -1036,7 +1046,7 @@ export default function LearnerPracticeEBA() {
           </button>
           <button
             onClick={() => setActiveTab('eintraege')}
-            className={`px-4 py-2 rounded-lg border flex items-center gap-2 transition-colors ${
+            className={`px-4 py-2 rounded-lg border flex items-center gap-2 relative transition-colors ${
               activeTab === 'eintraege'
                 ? 'bg-blue-600 text-white border-blue-600'
                 : 'bg-white hover:bg-gray-50'
@@ -1044,6 +1054,11 @@ export default function LearnerPracticeEBA() {
           >
             <ListChecks className="w-4 h-4" />
             Meine Einträge ({entries.length})
+            {entries.filter(e => e.teacherNote && !e.learnerReply).length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full min-w-[1.25rem] h-5 flex items-center justify-center px-1 font-bold">
+                {entries.filter(e => e.teacherNote && !e.learnerReply).length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('zirkularitaet')}
@@ -1126,6 +1141,18 @@ export default function LearnerPracticeEBA() {
           <div className="bg-white rounded-2xl shadow-sm border p-6">
             <h2 className="text-lg font-bold mb-4">Meine Einträge</h2>
 
+            {/* Notification Banner: neue LP-Kommentare */}
+            {entries.filter(e => e.teacherNote && !e.learnerReply).length > 0 && (
+              <div className="mb-4 bg-amber-50 border-2 border-amber-400 rounded-xl p-3 flex items-center gap-2">
+                <Bell className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="text-sm text-amber-800 font-medium">
+                  {entries.filter(e => e.teacherNote && !e.learnerReply).length === 1
+                    ? '1 neue Rückmeldung der Lehrperson – bitte antworten!'
+                    : `${entries.filter(e => e.teacherNote && !e.learnerReply).length} neue Rückmeldungen der Lehrperson – bitte antworten!`}
+                </span>
+              </div>
+            )}
+
             {loading ? (
               <p className="text-gray-500">Lade...</p>
             ) : entries.length === 0 ? (
@@ -1148,14 +1175,15 @@ export default function LearnerPracticeEBA() {
                   </span>
                 </div>
 
-                {/* Einträge */}
+                {/* Einträge – mit Highlight für ungelesene LP-Kommentare */}
                 {entries.map(entry => (
-                  <EntryDetailCard
-                    key={entry.id}
-                    entry={entry}
-                    onDelete={handleDeleteEntry}
-                    onReply={(e) => { setReplyEntry(e); setReplyText(e.learnerReply || ''); }}
-                  />
+                  <div key={entry.id} className={entry.teacherNote && !entry.learnerReply ? 'ring-2 ring-amber-400 rounded-lg' : ''}>
+                    <EntryDetailCard
+                      entry={entry}
+                      onDelete={handleDeleteEntry}
+                      onReply={(e) => { setReplyEntry(e); setReplyText(e.learnerReply || ''); }}
+                    />
+                  </div>
                 ))}
               </div>
             )}
