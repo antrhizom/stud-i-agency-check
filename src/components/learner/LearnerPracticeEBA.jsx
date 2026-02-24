@@ -10,6 +10,7 @@ import {
   getDocs,
   deleteDoc,
   doc,
+  updateDoc,
   Timestamp
 } from 'firebase/firestore';
 import {
@@ -41,7 +42,9 @@ import {
   Minus,
   Info,
   ListChecks,
-  Trash2
+  Trash2,
+  Send,
+  CheckCircle
 } from 'lucide-react';
 import ZirkularitaetDashboard from './ZirkularitaetDashboard';
 
@@ -237,14 +240,26 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
                 ))}
               </select>
             </div>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="px-4 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 font-medium"
-            >
-              Speichern
-            </button>
           </div>
+
+          {/* Notiz pro Kompetenz */}
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Notiz zu dieser Kompetenz (optional)</label>
+            <textarea
+              value={formData.note}
+              onChange={(e) => setFormData(prev => ({ ...prev, note: e.target.value }))}
+              placeholder="Was habe ich gelernt? Was war schwierig? Was nehme ich mit?"
+              className="w-full px-2 py-1.5 border rounded text-xs h-16 resize-none focus:outline-none focus:ring-1 focus:ring-blue-300"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-4 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 font-medium"
+          >
+            Speichern
+          </button>
         </div>
       )}
     </div>
@@ -647,8 +662,38 @@ const findKompetenzById = (kompetenzId) => {
   return null;
 };
 
+// Kommentar-Thread für Einträge
+const CommentThread = ({ entry, onReply }) => {
+  if (!entry.teacherNote) return null;
+  return (
+    <div className="mt-3 space-y-2 pt-3 border-t">
+      <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+        <div className="flex items-center gap-1.5 mb-1">
+          <MessageSquare className="w-3.5 h-3.5 text-amber-600" />
+          <span className="text-xs font-semibold text-amber-700">Kommentar der Lehrperson</span>
+        </div>
+        <p className="text-gray-800 text-sm">{entry.teacherNote}</p>
+      </div>
+      {entry.learnerReply ? (
+        <div className="text-sm bg-blue-50 border border-blue-200 rounded-lg p-3 ml-4">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Send className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-xs font-semibold text-blue-700">Meine Antwort</span>
+          </div>
+          <p className="text-gray-800">{entry.learnerReply}</p>
+          <button onClick={() => onReply(entry)} className="mt-1 text-xs text-blue-500 hover:text-blue-700">Bearbeiten</button>
+        </div>
+      ) : (
+        <button onClick={() => onReply(entry)} className="ml-4 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium">
+          <Send className="w-3.5 h-3.5" /> Antworten
+        </button>
+      )}
+    </div>
+  );
+};
+
 // Eintrag-Detailansicht Komponente
-const EntryDetailCard = ({ entry, onDelete }) => {
+const EntryDetailCard = ({ entry, onDelete, onReply }) => {
   const statusLabel = STATUS_OPTIONS.find(s => s.id === entry.status)?.label || entry.status;
   const statusColor = STATUS_OPTIONS.find(s => s.id === entry.status)?.color || '#F3F4F6';
   const thema = themen.find(t => t.id === entry.themaId);
@@ -670,6 +715,7 @@ const EntryDetailCard = ({ entry, onDelete }) => {
             <p className="text-xs font-medium" style={{ color: uiColors.gesellschaft.text }}>{bereichInfo?.label || entry.bereich}</p>
             <p className="text-sm text-gray-800 mt-1">{entry.inhalt}</p>
             {found && <p className="text-xs text-gray-400 mt-2">Kompetenz: {found.kompetenz.text.substring(0, 80)}...</p>}
+            {entry.note && <div className="mt-2 text-xs bg-gray-50 border rounded p-2 text-gray-700 italic">📝 {entry.note}</div>}
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
@@ -677,6 +723,7 @@ const EntryDetailCard = ({ entry, onDelete }) => {
               {entry.howLearned && <span className="text-gray-600">Wie: <strong>{entry.howLearned}</strong></span>}
               {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
+            <CommentThread entry={entry} onReply={onReply} />
           </div>
           <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
             <Trash2 className="w-4 h-4" />
@@ -705,6 +752,7 @@ const EntryDetailCard = ({ entry, onDelete }) => {
             </p>
             <p className="text-sm text-gray-800 mt-1">{entry.inhalt}</p>
             {found && <p className="text-xs text-gray-400 mt-2">Kompetenz: {found.kompetenz.text.substring(0, 80)}...</p>}
+            {entry.note && <div className="mt-2 text-xs bg-gray-50 border rounded p-2 text-gray-700 italic">📝 {entry.note}</div>}
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="px-2 py-1 rounded" style={{ backgroundColor: statusColor }}>{statusLabel}</span>
@@ -712,6 +760,7 @@ const EntryDetailCard = ({ entry, onDelete }) => {
               {entry.howLearned && <span className="text-gray-600">Wie: <strong>{entry.howLearned}</strong></span>}
               {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
+            <CommentThread entry={entry} onReply={onReply} />
           </div>
           <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
             <Trash2 className="w-4 h-4" />
@@ -733,28 +782,20 @@ const EntryDetailCard = ({ entry, onDelete }) => {
             <div className="flex items-center gap-2 mb-2">
               <Target className="w-4 h-4" style={{ color: uiColors.schluessel.text }} />
               <span className="text-xs font-medium" style={{ color: uiColors.schluessel.text }}>Schlüsselkompetenz</span>
-              {thema && (
-                <span className="text-xs text-gray-400">• Thema {thema.order}</span>
-              )}
+              {thema && <span className="text-xs text-gray-400">• Thema {thema.order}</span>}
             </div>
             <p className="text-xs font-mono text-gray-500">{sk?.code}</p>
             <p className="text-sm font-medium text-gray-800">{sk?.label}</p>
+            {entry.note && <div className="mt-2 text-xs bg-gray-50 border rounded p-2 text-gray-700 italic">📝 {entry.note}</div>}
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
               {entry.howLearned && <span className="text-gray-600">Wie: <strong>{entry.howLearned}</strong></span>}
-              {entry.createdAt && (
-                <span className="text-gray-400">
-                  {entry.createdAt.toLocaleDateString('de-CH')}
-                </span>
-              )}
+              {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
+            <CommentThread entry={entry} onReply={onReply} />
           </div>
-
-          <button
-            onClick={() => onDelete(entry.id)}
-            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-          >
+          <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
@@ -774,27 +815,19 @@ const EntryDetailCard = ({ entry, onDelete }) => {
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4" style={{ color: tt?.color || '#7C3AED' }} />
               <span className="text-xs font-medium" style={{ color: tt?.color || '#7C3AED' }}>Transversales Thema</span>
-              {thema && (
-                <span className="text-xs text-gray-400">• Thema {thema.order}</span>
-              )}
+              {thema && <span className="text-xs text-gray-400">• Thema {thema.order}</span>}
             </div>
             <p className="text-sm font-medium text-gray-800">{tt?.label}</p>
+            {entry.note && <div className="mt-2 text-xs bg-gray-50 border rounded p-2 text-gray-700 italic">📝 {entry.note}</div>}
 
             <div className="mt-3 pt-3 border-t flex flex-wrap gap-3 text-xs">
               <span className="text-gray-600">Wo: <strong>{entry.howMethod}</strong></span>
               {entry.howLearned && <span className="text-gray-600">Wie: <strong>{entry.howLearned}</strong></span>}
-              {entry.createdAt && (
-                <span className="text-gray-400">
-                  {entry.createdAt.toLocaleDateString('de-CH')}
-                </span>
-              )}
+              {entry.createdAt && <span className="text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
             </div>
+            <CommentThread entry={entry} onReply={onReply} />
           </div>
-
-          <button
-            onClick={() => onDelete(entry.id)}
-            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-          >
+          <button onClick={() => onDelete(entry.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
@@ -811,6 +844,12 @@ export default function LearnerPracticeEBA() {
   const [activeLehrjahr, setActiveLehrjahr] = useState(1);
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState([]);
+
+  // Toast & Kommentar-Antwort
+  const [saveToast, setSaveToast] = useState(false);
+  const [replyEntry, setReplyEntry] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [savingReply, setSavingReply] = useState(false);
 
   // Load entries - ohne orderBy um Index-Fehler zu vermeiden
   const loadEntries = async () => {
@@ -868,10 +907,32 @@ export default function LearnerPracticeEBA() {
         createdAt: Timestamp.now()
       });
       await loadEntries();
+      // Inline-Toast statt alert / kein Seitenwechsel
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 2500);
     } catch (err) {
       alert('Fehler: ' + (err?.message || String(err)));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Antwort der Lernenden auf Lehrpersonen-Kommentar
+  const saveReply = async () => {
+    if (!replyEntry) return;
+    setSavingReply(true);
+    try {
+      await updateDoc(doc(db, 'practiceEntriesEBA', replyEntry.id), {
+        learnerReply: replyText.trim() || null,
+        learnerReplyAt: replyText.trim() ? Timestamp.now() : null
+      });
+      setEntries(prev =>
+        prev.map(e => e.id === replyEntry.id ? { ...e, learnerReply: replyText.trim() || null } : e)
+      );
+      setReplyEntry(null);
+      setReplyText('');
+    } finally {
+      setSavingReply(false);
     }
   };
 
@@ -897,6 +958,46 @@ export default function LearnerPracticeEBA() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* Erfolgs-Toast */}
+      {saveToast && (
+        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-2">
+          <CheckCircle className="w-5 h-5" />
+          <span className="font-medium">Gespeichert!</span>
+        </div>
+      )}
+
+      {/* Antwort-Modal */}
+      {replyEntry && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <h3 className="text-lg font-bold mb-1">Antwort auf Lehrpersonen-Kommentar</h3>
+            <div className="mb-3 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <span className="text-xs font-semibold text-amber-700 block mb-1">Kommentar der Lehrperson</span>
+              <p className="text-gray-800">{replyEntry.teacherNote}</p>
+            </div>
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="Deine Antwort..."
+              className="w-full border rounded-lg px-3 py-2 h-24 resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
+              autoFocus
+            />
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => { setReplyEntry(null); setReplyText(''); }} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Abbrechen</button>
+              <button
+                onClick={saveReply}
+                disabled={savingReply || !replyText.trim()}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                {savingReply ? 'Sende…' : 'Senden'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -1053,6 +1154,7 @@ export default function LearnerPracticeEBA() {
                     key={entry.id}
                     entry={entry}
                     onDelete={handleDeleteEntry}
+                    onReply={(e) => { setReplyEntry(e); setReplyText(e.learnerReply || ''); }}
                   />
                 ))}
               </div>

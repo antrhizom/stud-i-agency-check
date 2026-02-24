@@ -23,7 +23,7 @@ import {
   getSprachmodusById,
   getGesellschaftsinhaltById
 } from '../../data/curriculumEBA';
-import { LogOut, Users, Plus, Copy, MessageSquare, Download, Trash2, BarChart3 } from 'lucide-react';
+import { LogOut, Users, Plus, Copy, MessageSquare, Download, Trash2, BarChart3, Bell, CheckCircle, Send } from 'lucide-react';
 
 const TIER_NAMEN = [
   'Adler', 'Bär', 'Dachs', 'Eichhörnchen', 'Fuchs', 'Giraffe', 'Hase', 'Igel',
@@ -122,9 +122,12 @@ export default function TeacherDashboard() {
   const [codeAnzahl, setCodeAnzahl] = useState(10);
   const [generated, setGenerated] = useState([]);
   const [noteEntryId, setNoteEntryId] = useState('');
+  const [noteEntry, setNoteEntry] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [activityEntries, setActivityEntries] = useState([]);
+  const [noteSaveSuccess, setNoteSaveSuccess] = useState(false);
 
   // ============================================
   // LADEN
@@ -229,6 +232,27 @@ export default function TeacherDashboard() {
     };
     loadEntries().catch(console.error);
   }, [activeTab, selectedClassId, learners]);
+
+  // Alle Einträge mit Lernenden-Notizen (Activity-Feed)
+  useEffect(() => {
+    const realLearnerIds = learners.filter(l => !l._isCodeOnly).map(l => l.id);
+    if (realLearnerIds.length === 0) { setActivityEntries([]); return; }
+    const loadActivity = async () => {
+      const all = [];
+      for (let i = 0; i < realLearnerIds.length; i += 30) {
+        const chunk = realLearnerIds.slice(i, i + 30);
+        const q = query(collection(db, 'practiceEntriesEBA'), where('learnerId', 'in', chunk));
+        const snap = await getDocs(q);
+        for (const d of snap.docs) {
+          const data = { id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate?.() || null };
+          if (data.note) all.push(data);
+        }
+      }
+      all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setActivityEntries(all);
+    };
+    loadActivity().catch(console.error);
+  }, [learners]);
 
   // ============================================
   // MEMOS
@@ -354,23 +378,24 @@ export default function TeacherDashboard() {
 
   const copyCode = async (code) => { await navigator.clipboard.writeText(code); alert('Code kopiert!'); };
 
-  const startNote = (entry) => { setNoteEntryId(entry.id); setNoteText(entry.teacherNote || ''); };
+  const startNote = (entry) => { setNoteEntry(entry); setNoteEntryId(entry.id); setNoteText(entry.teacherNote || ''); };
 
   const saveNote = async () => {
     if (!noteEntryId) return;
     setSavingNote(true);
     try {
       await updateDoc(doc(db, 'practiceEntriesEBA', noteEntryId), { teacherNote: noteText.trim() || null, teacherNoteAt: noteText.trim() ? Timestamp.now() : null });
-      setPracticeEntries(prev => prev.map(e => e.id === noteEntryId ? { ...e, teacherNote: noteText.trim() || null } : e));
-      // Auch in classEntries updaten
+      const updater = e => e.id === noteEntryId ? { ...e, teacherNote: noteText.trim() || null } : e;
+      setPracticeEntries(prev => prev.map(updater));
       setClassEntries(prev => {
         const updated = { ...prev };
-        for (const lid in updated) {
-          updated[lid] = updated[lid].map(e => e.id === noteEntryId ? { ...e, teacherNote: noteText.trim() || null } : e);
-        }
+        for (const lid in updated) updated[lid] = updated[lid].map(updater);
         return updated;
       });
-      setNoteEntryId(''); setNoteText('');
+      setActivityEntries(prev => prev.map(updater));
+      setNoteEntryId(''); setNoteText(''); setNoteEntry(null);
+      setNoteSaveSuccess(true);
+      setTimeout(() => setNoteSaveSuccess(false), 3000);
     } finally { setSavingNote(false); }
   };
 
@@ -395,11 +420,19 @@ export default function TeacherDashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6">
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-6 flex-wrap">
           <button onClick={() => setActiveTab('classes')} className={`px-4 py-2 rounded-lg ${activeTab==='classes' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>Klassen</button>
           <button onClick={() => setActiveTab('learners')} className={`px-4 py-2 rounded-lg ${activeTab==='learners' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>Lernende</button>
           <button onClick={() => setActiveTab('entries')} className={`px-4 py-2 rounded-lg ${activeTab==='entries' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
             <BarChart3 className="w-4 h-4 inline mr-1" />Übersicht
+          </button>
+          <button onClick={() => setActiveTab('activity')} className={`px-4 py-2 rounded-lg relative flex items-center gap-1.5 ${activeTab==='activity' ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
+            <Bell className="w-4 h-4" /> Aktivität
+            {activityEntries.filter(e => !e.teacherNote).length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full min-w-[1.25rem] h-5 flex items-center justify-center px-1">
+                {activityEntries.filter(e => !e.teacherNote).length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -721,6 +754,93 @@ export default function TeacherDashboard() {
             )}
           </div>
         )}
+        {/* ===== AKTIVITÄT TAB ===== */}
+        {activeTab === 'activity' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow p-6">
+              <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
+                <Bell className="w-5 h-5 text-amber-500" /> Aktivität
+              </h2>
+              <p className="text-sm text-gray-500">
+                Einträge mit Notizen von Lernenden
+                {activityEntries.filter(e => !e.teacherNote).length > 0 && (
+                  <span className="ml-2 bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                    {activityEntries.filter(e => !e.teacherNote).length} ohne Kommentar
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {activityEntries.length === 0 ? (
+              <div className="bg-white rounded-2xl shadow p-10 text-center text-gray-500">
+                Noch keine Notizen von Lernenden vorhanden.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activityEntries.map(entry => {
+                  const learnerName = learners.find(l => l.id === entry.learnerId)?.name || '—';
+                  const typeLabels = {
+                    gesellschaft: { label: 'Gesellschaft', color: 'bg-emerald-100 text-emerald-800' },
+                    sprachmodus: { label: 'Sprache', color: 'bg-blue-100 text-blue-800' },
+                    schluesselkompetenz: { label: 'Schlüssel', color: 'bg-amber-100 text-amber-800' },
+                    transversal: { label: 'Transversal', color: 'bg-purple-100 text-purple-800' }
+                  };
+                  const typeInfo = typeLabels[entry.type] || { label: entry.type || '—', color: 'bg-gray-100 text-gray-800' };
+                  const needsComment = !entry.teacherNote;
+
+                  return (
+                    <div key={entry.id} className={`bg-white rounded-2xl shadow p-5 ${needsComment ? 'border-l-4 border-amber-400' : 'border-l-4 border-green-300'}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <span className="font-semibold text-sm">{learnerName}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeInfo.color}`}>{typeInfo.label}</span>
+                            {entry.themaId && <span className="text-xs text-gray-400">T{ebaThemen.find(t => t.id === entry.themaId)?.order || '?'}</span>}
+                            {entry.createdAt && <span className="text-xs text-gray-400">{entry.createdAt.toLocaleDateString('de-CH')}</span>}
+                          </div>
+                          {entry.inhalt && <div className="text-sm text-gray-600 mb-2 italic">{entry.inhalt}</div>}
+
+                          {/* Lernenden-Notiz */}
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                            <div className="text-xs font-semibold text-blue-700 mb-1">📝 Notiz der/des Lernenden</div>
+                            <div className="text-sm text-gray-800">{entry.note}</div>
+                          </div>
+
+                          {/* Kommentar-Thread */}
+                          {entry.teacherNote && (
+                            <div className="ml-4 space-y-2">
+                              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                <div className="text-xs font-semibold text-amber-700 mb-1">💬 Mein Kommentar</div>
+                                <div className="text-sm text-gray-800">{entry.teacherNote}</div>
+                              </div>
+                              {entry.learnerReply && (
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <Send className="w-3 h-3 text-green-600" />
+                                    <span className="text-xs font-semibold text-green-700">Antwort von {learnerName}</span>
+                                  </div>
+                                  <div className="text-sm text-gray-800">{entry.learnerReply}</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => startNote(entry)}
+                          className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition ${needsComment ? 'bg-amber-500 text-white hover:bg-amber-600' : 'border hover:bg-gray-50 text-gray-600'}`}
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                          {entry.teacherNote ? 'Bearbeiten' : 'Kommentieren'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* ===== CODE MODAL ===== */}
@@ -780,14 +900,53 @@ export default function TeacherDashboard() {
       {/* ===== NOTIZ MODAL ===== */}
       {noteEntryId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
-            <h3 className="text-xl font-bold mb-2">Notiz der Lehrperson</h3>
-            <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} className="w-full border rounded-lg px-3 py-2 h-32" placeholder="Feedback, Hinweise, nächste Schritte..." />
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Feedback geben</h3>
+
+            {/* Kontext: Lernenden-Notiz */}
+            {noteEntry?.note && (
+              <div className="mb-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="text-xs font-semibold text-blue-700 mb-1">
+                  📝 Notiz von {learners.find(l => l.id === noteEntry?.learnerId)?.name || '—'}
+                </div>
+                {noteEntry?.inhalt && <div className="text-xs text-gray-500 mb-1 italic">{noteEntry.inhalt}</div>}
+                <div className="text-sm text-gray-800">{noteEntry.note}</div>
+              </div>
+            )}
+
+            {/* Antwort der/des Lernenden (falls vorhanden) */}
+            {noteEntry?.learnerReply && (
+              <div className="mb-3 bg-green-50 border border-green-200 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Send className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-xs font-semibold text-green-700">Antwort der/des Lernenden</span>
+                </div>
+                <div className="text-sm text-gray-800">{noteEntry.learnerReply}</div>
+              </div>
+            )}
+
+            <label className="text-sm font-medium text-gray-700 block mb-1">Mein Kommentar</label>
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 h-28 resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
+              placeholder="Feedback, Hinweise, nächste Schritte..."
+              autoFocus
+            />
             <div className="flex gap-2 mt-4">
-              <button onClick={() => { setNoteEntryId(''); setNoteText(''); }} className="flex-1 px-4 py-2 border rounded-lg">Abbrechen</button>
-              <button onClick={saveNote} disabled={savingNote} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">Speichern</button>
+              <button onClick={() => { setNoteEntryId(''); setNoteText(''); setNoteEntry(null); }} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Abbrechen</button>
+              <button onClick={saveNote} disabled={savingNote} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center justify-center gap-2">
+                {savingNote ? 'Speichere…' : <><CheckCircle className="w-4 h-4" /> Speichern</>}
+              </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ===== SAVE SUCCESS TOAST ===== */}
+      {noteSaveSuccess && (
+        <div className="fixed bottom-6 right-6 bg-green-600 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 z-50">
+          <CheckCircle className="w-5 h-5" /> Kommentar gespeichert!
         </div>
       )}
     </div>

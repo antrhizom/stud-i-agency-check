@@ -10,10 +10,11 @@ import {
   getDocs,
   deleteDoc,
   doc,
+  updateDoc,
   Timestamp
 } from 'firebase/firestore';
 import { themes, competencies, changeTags } from '../../data/curriculum';
-import { LogOut, Plus, Trash2, BarChart3, ListChecks, CalendarDays, GraduationCap } from 'lucide-react';
+import { LogOut, Plus, Trash2, BarChart3, ListChecks, CalendarDays, GraduationCap, CheckCircle, MessageSquare, Send } from 'lucide-react';
 import LearnerPracticeEBA from './LearnerPracticeEBA';
 
 const STATUS_OPTIONS = [
@@ -34,6 +35,12 @@ export default function LearnerDashboard() {
 
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState([]);
+
+  // Toast & Kommentar-Antwort
+  const [saveToast, setSaveToast] = useState(false);
+  const [replyEntryId, setReplyEntryId] = useState('');
+  const [replyText, setReplyText] = useState('');
+  const [savingReply, setSavingReply] = useState(false);
 
   // Form
   const [date, setDate] = useState(ymd(new Date()));
@@ -115,7 +122,7 @@ export default function LearnerDashboard() {
         createdAt: Timestamp.now()
       });
 
-      // reset
+      // Formular zurücksetzen (bleibe auf practice-Tab)
       setCompetencyId('');
       setStatus('geuebt');
       setWhereText('');
@@ -124,11 +131,31 @@ export default function LearnerDashboard() {
       setTagIds([]);
 
       await loadEntries();
-      setActiveTab('entries');
+      // kein setActiveTab('entries') → kein Redirect!
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 3000);
     } catch (err) {
       alert('Fehler: ' + (err?.message || String(err)));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveReply = async () => {
+    if (!replyEntryId) return;
+    setSavingReply(true);
+    try {
+      await updateDoc(doc(db, 'practiceEntries', replyEntryId), {
+        learnerReply: replyText.trim() || null,
+        learnerReplyAt: replyText.trim() ? Timestamp.now() : null
+      });
+      setEntries(prev =>
+        prev.map(e => e.id === replyEntryId ? { ...e, learnerReply: replyText.trim() || null } : e)
+      );
+      setReplyEntryId('');
+      setReplyText('');
+    } finally {
+      setSavingReply(false);
     }
   };
 
@@ -191,6 +218,37 @@ export default function LearnerDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* Erfolgs-Toast */}
+      {saveToast && (
+        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-2">
+          <CheckCircle className="w-5 h-5" />
+          <span className="font-medium">Eintrag gespeichert!</span>
+        </div>
+      )}
+
+      {/* Antwort-Modal auf Lehrpersonen-Kommentar */}
+      {replyEntryId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <h3 className="text-lg font-bold mb-3">Antwort auf Kommentar</h3>
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="Deine Antwort..."
+              className="w-full border rounded-lg px-3 py-2 h-24 resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
+              autoFocus
+            />
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => { setReplyEntryId(''); setReplyText(''); }} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Abbrechen</button>
+              <button onClick={saveReply} disabled={savingReply || !replyText.trim()} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center justify-center gap-2">
+                <Send className="w-4 h-4" />{savingReply ? 'Sende…' : 'Senden'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mode Switcher */}
       <div className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white">
         <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between">
