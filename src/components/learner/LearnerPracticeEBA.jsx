@@ -144,6 +144,7 @@ const Counter = ({ value, onChange, min = 0, max = 99 }) => {
 // Einzelner klickbarer Inhalt mit Erfassungs-Popup
 const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: Icon, onSave, entryCount = 0 }) => {
   const [showForm, setShowForm] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
   const [formData, setFormData] = useState({
     status: 'kurz',
     howMethod: '',
@@ -161,8 +162,11 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
       return;
     }
     onSave(formData);
+    // Felder zurücksetzen, Form bleibt offen zur Überprüfung
     setFormData({ status: 'kurz', howMethod: '', howLearned: '', note: '' });
-    setShowForm(false);
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 3000);
+    // setShowForm(false) bewusst entfernt → Form bleibt offen
   };
 
   return (
@@ -254,13 +258,27 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
             />
           </div>
 
-          <button
-            type="button"
-            onClick={handleSave}
-            className="px-4 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 font-medium"
-          >
-            Speichern
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-4 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 font-medium flex items-center gap-1.5"
+            >
+              Speichern
+            </button>
+            {savedSuccess && (
+              <span className="flex items-center gap-1 text-xs text-green-600 font-semibold">
+                <CheckCircle className="w-3.5 h-3.5" /> Gespeichert!
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="ml-auto text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              Schliessen
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -856,6 +874,9 @@ export default function LearnerPracticeEBA() {
   const [replyText, setReplyText] = useState('');
   const [savingReply, setSavingReply] = useState(false);
 
+  // Filter für "Meine Einträge"
+  const [entryFilter, setEntryFilter] = useState(null); // null | 'gesellschaft' | 'sprachmodus' | 'schluesselkompetenz' | 'transversal' | 'comments'
+
   // Load entries - ohne orderBy um Index-Fehler zu vermeiden
   const loadEntries = async () => {
     if (!currentUser) return;
@@ -1159,32 +1180,68 @@ export default function LearnerPracticeEBA() {
               <p className="text-gray-500">Noch keine Einträge vorhanden.</p>
             ) : (
               <div className="space-y-2">
-                {/* Statistik */}
-                <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b">
-                  <span className="px-2 py-1 text-xs rounded" style={{ backgroundColor: uiColors.gesellschaft.bg, color: uiColors.gesellschaft.text }}>
-                    {entries.filter(e => e.type === 'gesellschaft').length} Gesellschaft
-                  </span>
-                  <span className="px-2 py-1 text-xs rounded" style={{ backgroundColor: uiColors.sprache.bg, color: uiColors.sprache.text }}>
-                    {entries.filter(e => e.type === 'sprachmodus').length} Sprachmodi
-                  </span>
-                  <span className="px-2 py-1 text-xs rounded" style={{ backgroundColor: uiColors.schluessel.bg, color: uiColors.schluessel.text }}>
-                    {entries.filter(e => e.type === 'schluesselkompetenz').length} Schlüsselkomp.
-                  </span>
-                  <span className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-700">
-                    {entries.filter(e => e.type === 'transversal').length} Transversal
-                  </span>
+                {/* Filter-Buttons (gleichzeitig Statistik) */}
+                <div className="flex flex-wrap gap-2 mb-1 pb-4 border-b items-center">
+                  {[
+                    { key: 'gesellschaft', label: 'Gesellschaft', bg: uiColors.gesellschaft.bg, color: uiColors.gesellschaft.text },
+                    { key: 'sprachmodus', label: 'Sprachmodi', bg: uiColors.sprache.bg, color: uiColors.sprache.text },
+                    { key: 'schluesselkompetenz', label: 'Schlüsselkomp.', bg: uiColors.schluessel.bg, color: uiColors.schluessel.text },
+                    { key: 'transversal', label: 'Transversal', bg: '#F3E8FF', color: '#7C3AED' },
+                  ].map(f => {
+                    const count = entries.filter(e => e.type === f.key).length;
+                    const active = entryFilter === f.key;
+                    return (
+                      <button
+                        key={f.key}
+                        onClick={() => setEntryFilter(active ? null : f.key)}
+                        className={`px-2.5 py-1 text-xs rounded-lg transition-all border-2 ${active ? 'border-gray-700 font-bold shadow-sm scale-105' : 'border-transparent hover:border-gray-300 opacity-85 hover:opacity-100'}`}
+                        style={{ backgroundColor: f.bg, color: f.color }}
+                        title={active ? 'Filter aufheben' : `Nach ${f.label} filtern`}
+                      >
+                        {count} {f.label}{active && ' ✕'}
+                      </button>
+                    );
+                  })}
+                  {entries.filter(e => e.teacherNote).length > 0 && (
+                    <button
+                      onClick={() => setEntryFilter(entryFilter === 'comments' ? null : 'comments')}
+                      className={`px-2.5 py-1 text-xs rounded-lg transition-all border-2 flex items-center gap-1 ${entryFilter === 'comments' ? 'border-gray-700 font-bold shadow-sm scale-105' : 'border-transparent hover:border-gray-300 opacity-85 hover:opacity-100'} bg-amber-100 text-amber-800`}
+                      title={entryFilter === 'comments' ? 'Filter aufheben' : 'Nur Einträge mit LP-Rückmeldung'}
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      {entries.filter(e => e.teacherNote).length} Rückmeldungen{entryFilter === 'comments' && ' ✕'}
+                    </button>
+                  )}
+                  {entryFilter && (
+                    <button
+                      onClick={() => setEntryFilter(null)}
+                      className="px-2.5 py-1 text-xs rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-300"
+                    >
+                      Alle anzeigen
+                    </button>
+                  )}
                 </div>
 
-                {/* Einträge – mit Highlight für ungelesene LP-Kommentare */}
-                {entries.map(entry => (
-                  <div key={entry.id} className={entry.teacherNote && !entry.learnerReply ? 'ring-2 ring-amber-400 rounded-lg' : ''}>
-                    <EntryDetailCard
-                      entry={entry}
-                      onDelete={handleDeleteEntry}
-                      onReply={(e) => { setReplyEntry(e); setReplyText(e.learnerReply || ''); }}
-                    />
-                  </div>
-                ))}
+                {/* Einträge – gefiltert, mit Highlight für ungelesene LP-Kommentare */}
+                {(() => {
+                  const filtered = entryFilter === 'comments'
+                    ? entries.filter(e => e.teacherNote)
+                    : entryFilter
+                      ? entries.filter(e => e.type === entryFilter)
+                      : entries;
+                  if (filtered.length === 0) {
+                    return <p className="text-gray-400 text-sm py-4 text-center">Keine Einträge in dieser Kategorie.</p>;
+                  }
+                  return filtered.map(entry => (
+                    <div key={entry.id} className={entry.teacherNote && !entry.learnerReply ? 'ring-2 ring-amber-400 rounded-lg' : ''}>
+                      <EntryDetailCard
+                        entry={entry}
+                        onDelete={handleDeleteEntry}
+                        onReply={(e) => { setReplyEntry(e); setReplyText(e.learnerReply || ''); }}
+                      />
+                    </div>
+                  ));
+                })()}
               </div>
             )}
           </div>
