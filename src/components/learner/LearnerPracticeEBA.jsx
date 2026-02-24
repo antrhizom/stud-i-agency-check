@@ -142,7 +142,7 @@ const Counter = ({ value, onChange, min = 0, max = 99 }) => {
 };
 
 // Einzelner klickbarer Inhalt mit Erfassungs-Popup
-const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: Icon, onSave, entryCount = 0 }) => {
+const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: Icon, onSave, entryCount = 0, recentEntries = [] }) => {
   const [showForm, setShowForm] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [formData, setFormData] = useState({
@@ -168,6 +168,13 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
     setTimeout(() => setSavedSuccess(false), 3000);
     // setShowForm(false) bewusst entfernt → Form bleibt offen
   };
+
+  // Notizen aus gespeicherten Einträgen (neueste zuerst, max. 3)
+  const savedNotes = recentEntries
+    .filter(e => e.note)
+    .slice()
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 3);
 
   return (
     <div className="mt-2">
@@ -195,6 +202,21 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
           </div>
         </div>
         <p className="text-gray-700 text-xs">{inhalt}</p>
+
+        {/* Gespeicherte Notizen – immer sichtbar, auch wenn Form geschlossen */}
+        {savedNotes.length > 0 && (
+          <div className="mt-2 space-y-1" onClick={e => e.stopPropagation()}>
+            {savedNotes.map((e, i) => (
+              <div key={i} className="text-xs bg-white/80 border border-white/60 rounded px-2 py-1.5 flex items-start gap-1.5">
+                <span className="shrink-0 text-gray-500">📝</span>
+                <span className="flex-1 text-gray-700 italic">{e.note}</span>
+                {e.createdAt instanceof Date && (
+                  <span className="ml-1 text-gray-400 shrink-0">{e.createdAt.toLocaleDateString('de-CH')}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Inline Erfassungs-Formular */}
@@ -261,7 +283,7 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
           <div className="flex items-center gap-3 flex-wrap">
             <button
               type="button"
-              onClick={handleSave}
+              onClick={(e) => { e.stopPropagation(); handleSave(); }}
               className="px-4 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 font-medium flex items-center gap-1.5"
             >
               Speichern
@@ -336,6 +358,12 @@ const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus
             textColor={uiColors.gesellschaft.text}
             icon={BookOpen}
             entryCount={getGesellschaftCount(g.bereich, idx)}
+            recentEntries={existingEntries.filter(e =>
+              e.type === 'gesellschaft' &&
+              e.kompetenzId === kompetenz.id &&
+              e.bereich === g.bereich &&
+              e.inhaltIdx === idx
+            )}
             onSave={(formData) => onSaveGesellschaft({
               kompetenzId: kompetenz.id,
               themaId: thema.id,
@@ -362,6 +390,12 @@ const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus
             textColor={uiColors.sprache.text}
             icon={MessageSquare}
             entryCount={getSprachmodusCount(sp.modus, idx)}
+            recentEntries={existingEntries.filter(e =>
+              e.type === 'sprachmodus' &&
+              e.kompetenzId === kompetenz.id &&
+              e.modus === sp.modus &&
+              e.inhaltIdx === idx
+            )}
             onSave={(formData) => onSaveSprachmodus({
               kompetenzId: kompetenz.id,
               themaId: thema.id,
@@ -411,6 +445,12 @@ const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus
                   textColor="#7C3AED"
                   icon={MessageSquare}
                   entryCount={optionalCount}
+                  recentEntries={existingEntries.filter(e =>
+                    e.type === 'sprachmodus' &&
+                    e.kompetenzId === kompetenz.id &&
+                    e.modus === modus.id &&
+                    e.isOptional === true
+                  )}
                   onSave={(formData) => onSaveSprachmodus({
                     kompetenzId: kompetenz.id,
                     themaId: thema.id,
@@ -451,6 +491,11 @@ const KompetenzCard = ({ kompetenz, thema, onSaveGesellschaft, onSaveSprachmodus
                 textColor={uiColors.schluessel.text}
                 icon={Target}
                 entryCount={getSchluesselCount(skId)}
+                recentEntries={existingEntries.filter(e =>
+                  e.type === 'schluesselkompetenz' &&
+                  e.kompetenzId === kompetenz.id &&
+                  e.schluesselkompetenzId === skId
+                )}
                 onSave={(formData) => onSaveSchluessel({
                   kompetenzId: kompetenz.id,
                   themaId: thema.id,
