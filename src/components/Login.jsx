@@ -54,7 +54,7 @@ const Login = () => {
         };
       case 'teacher':
         return {
-          title: 'Als Lehrperson ABU einloggen',
+          title: 'Als Lehrperson einloggen',
           description: 'Verwalte und bewerte deine Lernenden',
           placeholder: 'ihre.email@firma.ch'
         };
@@ -111,7 +111,7 @@ const Login = () => {
                 className="w-full bg-white hover:bg-gray-50 text-gray-800 py-4 px-6 rounded-xl font-medium transition-all transform hover:scale-105 flex items-center justify-center gap-3 border-2 border-gray-200 shadow-md"
               >
                 <UserCog className="w-6 h-6" />
-                <span>Als Lehrperson ABU einloggen</span>
+                <span>Als Lehrperson einloggen</span>
               </button>
 
               <button

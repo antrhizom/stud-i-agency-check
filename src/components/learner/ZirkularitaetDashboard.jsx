@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  themen,
+  themen as themenEBA,
   schluesselkompetenzen,
   sprachmodi,
   gesellschaftsinhalte,
@@ -315,7 +315,7 @@ const ThemaDetailCard = ({ thema, entries }) => {
 // ============================================
 // LEGENDE
 // ============================================
-const Legende = () => {
+const Legende = ({ themen }) => {
   return (
     <div className="bg-gray-50 rounded-lg p-4 mb-6">
       <h4 className="text-sm font-semibold text-gray-700 mb-3">Legende</h4>
@@ -359,7 +359,8 @@ const Legende = () => {
 // ============================================
 // HAUPTKOMPONENTE
 // ============================================
-export default function ZirkularitaetDashboard({ entries = [] }) {
+export default function ZirkularitaetDashboard({ entries = [], themen: themenProp, subjectLabel }) {
+  const themen = themenProp || themenEBA;
   // Statistiken
   const stats = useMemo(() => {
     const total = entries.length;
@@ -385,7 +386,7 @@ export default function ZirkularitaetDashboard({ entries = [] }) {
           Zirkularitäts-Dashboard
         </h2>
 
-        <Legende />
+        <Legende themen={themen} />
 
         {/* Statistik-Karten */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">

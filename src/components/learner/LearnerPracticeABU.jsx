@@ -14,8 +14,6 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import {
-  themen,
-  getThemenByLehrjahr,
   schluesselkompetenzen,
   sprachmodi,
   gesellschaftsinhalte,
@@ -26,6 +24,7 @@ import {
   uiColors,
   themenFarben
 } from '../../data/curriculumEBA';
+import { getSubjectById, DEFAULT_SUBJECT_ID } from '../../data/subjects';
 import {
   LogOut,
   ChevronDown,
@@ -713,7 +712,7 @@ const ThemaCard = ({ thema, entries, onSaveGesellschaft, onSaveSprachmodus, onSa
 // MAIN COMPONENT
 // ============================================
 // Helper: Finde Kompetenz nach ID
-const findKompetenzById = (kompetenzId) => {
+const findKompetenzById = (themen, kompetenzId) => {
   for (const thema of themen) {
     for (const lb of thema.lebensbezuege) {
       for (const komp of lb.kompetenzen) {
@@ -761,14 +760,14 @@ const CommentThread = ({ entry, onReply }) => {
 };
 
 // Eintrag-Detailansicht Komponente
-const EntryDetailCard = ({ entry, onDelete, onReply }) => {
+const EntryDetailCard = ({ entry, themen, onDelete, onReply }) => {
   const statusLabel = STATUS_OPTIONS.find(s => s.id === entry.status)?.label || entry.status;
   const statusColor = STATUS_OPTIONS.find(s => s.id === entry.status)?.color || '#F3F4F6';
   const thema = themen.find(t => t.id === entry.themaId);
 
   // Gesellschaft-Eintrag
   if (entry.type === 'gesellschaft' && entry.kompetenzId) {
-    const found = findKompetenzById(entry.kompetenzId);
+    const found = findKompetenzById(themen, entry.kompetenzId);
     const bereichInfo = getGesellschaftsinhaltById(entry.bereich);
 
     return (
@@ -803,7 +802,7 @@ const EntryDetailCard = ({ entry, onDelete, onReply }) => {
 
   // Sprachmodus-Eintrag
   if (entry.type === 'sprachmodus' && entry.kompetenzId) {
-    const found = findKompetenzById(entry.kompetenzId);
+    const found = findKompetenzById(themen, entry.kompetenzId);
     const modusInfo = getSprachmodusById(entry.modus);
 
     return (
@@ -906,8 +905,13 @@ const EntryDetailCard = ({ entry, onDelete, onReply }) => {
   return null;
 };
 
-export default function LearnerPracticeEBA() {
+export default function LearnerPracticeABU({ subject: subjectProp }) {
   const { signOut, userData, currentUser } = useAuth();
+  const subject = subjectProp || getSubjectById(DEFAULT_SUBJECT_ID);
+  const themen = subject.curriculum.themen;
+  const lehrjahre = Array.from(
+    new Set(themen.map(t => t.lehrjahr))
+  ).sort((a, b) => a - b);
   const [activeTab, setActiveTab] = useState('ueben'); // ueben | eintraege | zirkularitaet
   const [activeLehrjahr, setActiveLehrjahr] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -932,11 +936,13 @@ export default function LearnerPracticeEBA() {
         where('learnerId', '==', currentUser.uid)
       );
       const snap = await getDocs(q);
-      const data = snap.docs.map(d => ({
+      let data = snap.docs.map(d => ({
         id: d.id,
         ...d.data(),
         createdAt: d.data().createdAt?.toDate?.() || null
       }));
+      // Nur Einträge dieses Fachs (Alt-Einträge ohne subjectId gehören zu ABU EBA)
+      data = data.filter(e => (e.subjectId || DEFAULT_SUBJECT_ID) === subject.id);
       // Sortiere lokal nach createdAt (neueste zuerst)
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setEntries(data);
@@ -963,7 +969,8 @@ export default function LearnerPracticeEBA() {
 
   useEffect(() => {
     loadEntries();
-  }, [currentUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, subject.id]);
 
   // Generischer Save-Handler – kein setLoading(true), damit ThemaCards nicht unmounten
   const saveEntry = async (data) => {
@@ -973,6 +980,7 @@ export default function LearnerPracticeEBA() {
         learnerId: currentUser.uid,
         teacherId: userData?.teacherId || null,
         classId: userData?.classId || null,
+        subjectId: subject.id,
         ...data,
         createdAt: Timestamp.now()
       });
@@ -982,6 +990,7 @@ export default function LearnerPracticeEBA() {
         learnerId: currentUser.uid,
         teacherId: userData?.teacherId || null,
         classId: userData?.classId || null,
+        subjectId: subject.id,
         ...data,
         createdAt: new Date()
       };
@@ -1030,7 +1039,7 @@ export default function LearnerPracticeEBA() {
   };
 
   // Get themes for current Lehrjahr
-  const currentThemen = getThemenByLehrjahr(activeLehrjahr);
+  const currentThemen = themen.filter(t => t.lehrjahr === activeLehrjahr);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1080,7 +1089,7 @@ export default function LearnerPracticeEBA() {
           <div className="flex items-center gap-3">
             <img src="/LogoABU_DNA.png" alt="ABU Logo" className="h-10 w-10 object-contain" />
             <div>
-              <h1 className="text-xl font-bold text-gray-900">stud-i-agency · ABU EBA</h1>
+              <h1 className="text-xl font-bold text-gray-900">stud-i-agency · {subject.short}</h1>
               <p className="text-sm text-gray-600">
                 {userData?.name || userData?.displayName || 'Lernende:r'}
               </p>
@@ -1143,27 +1152,26 @@ export default function LearnerPracticeEBA() {
         {activeTab === 'ueben' && (
           <>
             {/* Lehrjahr Tabs */}
-            <div className="flex gap-2 mb-6">
-              <button
-                onClick={() => setActiveLehrjahr(1)}
-                className={`flex-1 py-3 rounded-lg border font-medium transition-colors ${
-                  activeLehrjahr === 1
-                    ? 'bg-cyan-600 text-white border-cyan-600'
-                    : 'bg-white hover:bg-gray-50'
-                }`}
-              >
-                1. Lehrjahr (Themen 1–4)
-              </button>
-              <button
-                onClick={() => setActiveLehrjahr(2)}
-                className={`flex-1 py-3 rounded-lg border font-medium transition-colors ${
-                  activeLehrjahr === 2
-                    ? 'bg-rose-600 text-white border-rose-600'
-                    : 'bg-white hover:bg-gray-50'
-                }`}
-              >
-                2. Lehrjahr (Themen 5–8)
-              </button>
+            <div className="flex gap-2 mb-6 flex-wrap">
+              {lehrjahre.map(lj => {
+                const ljThemen = themen.filter(t => t.lehrjahr === lj);
+                const colors = ['bg-cyan-600 border-cyan-600', 'bg-rose-600 border-rose-600', 'bg-emerald-600 border-emerald-600', 'bg-violet-600 border-violet-600'];
+                const orders = ljThemen.map(t => t.order);
+                const range = orders.length === 1 ? `Thema ${orders[0]}` : `Themen ${Math.min(...orders)}–${Math.max(...orders)}`;
+                return (
+                  <button
+                    key={lj}
+                    onClick={() => setActiveLehrjahr(lj)}
+                    className={`flex-1 min-w-[10rem] py-3 rounded-lg border font-medium transition-colors ${
+                      activeLehrjahr === lj
+                        ? `${colors[(lj - 1) % colors.length]} text-white`
+                        : 'bg-white hover:bg-gray-50'
+                    }`}
+                  >
+                    {lj}. Lehrjahr ({range})
+                  </button>
+                );
+              })}
             </div>
 
             {/* Info Box */}
@@ -1281,6 +1289,7 @@ export default function LearnerPracticeEBA() {
                     <div key={entry.id} className={entry.teacherNote && !entry.learnerReply ? 'ring-2 ring-amber-400 rounded-lg' : ''}>
                       <EntryDetailCard
                         entry={entry}
+                        themen={themen}
                         onDelete={handleDeleteEntry}
                         onReply={(e) => { setReplyEntry(e); setReplyText(e.learnerReply || ''); }}
                       />
@@ -1294,7 +1303,7 @@ export default function LearnerPracticeEBA() {
 
         {/* Zirkularität Tab */}
         {activeTab === 'zirkularitaet' && (
-          <ZirkularitaetDashboard entries={entries} />
+          <ZirkularitaetDashboard entries={entries} themen={themen} subjectLabel={subject.label} />
         )}
       </div>
     </div>
