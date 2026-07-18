@@ -26,13 +26,29 @@ import {
   Bell, CheckCircle, Send, UserPlus, LogIn, GraduationCap, Wrench, Filter
 } from 'lucide-react';
 
-const TIER_NAMEN = [
-  'Adler', 'Bär', 'Dachs', 'Eichhörnchen', 'Fuchs', 'Giraffe', 'Hase', 'Igel',
-  'Jaguar', 'Koala', 'Löwe', 'Maus', 'Nashorn', 'Otter', 'Pinguin', 'Qualle',
-  'Reh', 'Schwan', 'Tiger', 'Uhu', 'Vogel', 'Wolf', 'Yak', 'Zebra',
-  'Affe', 'Biber', 'Delfin', 'Elefant', 'Flamingo', 'Gepard', 'Hirsch', 'Kamel',
-  'Leopard', 'Marder', 'Nilpferd', 'Ozelot', 'Papagei', 'Robbe', 'Storch', 'Tukan'
+// Bausteine für Fantasienamen: Adjektiv + Wesen, dazu eine fortlaufende Nummer pro Klasse
+const FANTASIE_ADJEKTIVE = [
+  'Flinker', 'Mutiger', 'Schlauer', 'Wilder', 'Heller', 'Rascher', 'Starker', 'Leiser',
+  'Kluger', 'Bunter', 'Wacher', 'Kühner', 'Frecher', 'Stiller', 'Flotter', 'Heiterer'
 ];
+const FANTASIE_WESEN = [
+  'Drache', 'Phönix', 'Greif', 'Kobold', 'Yeti', 'Zentaur', 'Pegasus', 'Golem',
+  'Sphinx', 'Troll', 'Elf', 'Zwerg', 'Riese', 'Geist', 'Magier', 'Ritter',
+  'Pirat', 'Falke', 'Panther', 'Komet'
+];
+
+function generateFantasieName(usedNames, nummer) {
+  // Zufällige Kombination, die es in dieser Klasse noch nicht gibt
+  for (let i = 0; i < 50; i++) {
+    const adj = FANTASIE_ADJEKTIVE[Math.floor(Math.random() * FANTASIE_ADJEKTIVE.length)];
+    const wesen = FANTASIE_WESEN[Math.floor(Math.random() * FANTASIE_WESEN.length)];
+    const name = `${adj} ${wesen} ${nummer}`;
+    if (!usedNames.has(name)) return name;
+  }
+  return `Lernwesen ${nummer}`;
+}
+
+const MAX_CODES_PRO_DURCHGANG = 50;
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -467,18 +483,19 @@ export default function TeacherDashboard() {
   const createCodes = async () => {
     if (!currentUser || !selectedClassId) { alert('Bitte Klasse wählen.'); return; }
     const existingCodesSnap = await getDocs(query(collection(db, 'learnerCodes'), where('classId', '==', selectedClassId)));
-    const usedTierNames = new Set(existingCodesSnap.docs.map(d => d.data().name));
-    const availableTiere = TIER_NAMEN.filter(t => !usedTierNames.has(t));
-    if (availableTiere.length === 0) { alert(`Alle ${TIER_NAMEN.length} Tier-Namen sind für diese Klasse bereits vergeben.`); return; }
-    const anzahl = Math.min(Math.max(1, codeAnzahl), availableTiere.length);
-    if (anzahl < codeAnzahl && !confirm(`Nur noch ${availableTiere.length} Tier-Namen verfügbar. ${anzahl} Codes erstellen?`)) return;
+    const usedNames = new Set(existingCodesSnap.docs.map(d => d.data().name));
+    const anzahl = Math.min(Math.max(1, codeAnzahl), MAX_CODES_PRO_DURCHGANG);
 
-    const shuffledTiere = [...availableTiere].sort(() => Math.random() - 0.5).slice(0, anzahl);
+    // Fortlaufende Nummer: bei bestehenden Codes weiterzählen
+    let nummer = existingCodesSnap.size + 1;
     const out = [];
-    for (const tier of shuffledTiere) {
+    for (let i = 0; i < anzahl; i++) {
+      const name = generateFantasieName(usedNames, nummer);
+      usedNames.add(name);
+      nummer++;
       const code = generateCode();
-      await addDoc(collection(db, 'learnerCodes'), { code, name: tier, teacherId: currentUser.uid, classId: selectedClassId, used: false, userId: null, createdAt: Timestamp.now() });
-      out.push({ tier, code });
+      await addDoc(collection(db, 'learnerCodes'), { code, name, teacherId: currentUser.uid, classId: selectedClassId, used: false, userId: null, createdAt: Timestamp.now() });
+      out.push({ tier: name, code });
     }
     setGenerated(out);
   };
@@ -486,7 +503,7 @@ export default function TeacherDashboard() {
   const downloadCSV = () => {
     if (!generated.length) return;
     const className = classes.find(c => c.id === selectedClassId)?.name || 'Klasse';
-    const csv = ['Tier;Code;Name (ausfüllen)', ...generated.map(g => `${g.tier};${g.code};`)].join('\n');
+    const csv = ['Pseudonym;Code;Name (ausfüllen)', ...generated.map(g => `${g.tier};${g.code};`)].join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `Lernenden-Codes_${className}_${new Date().toISOString().split('T')[0]}.csv`; a.click();
@@ -1194,7 +1211,7 @@ export default function TeacherDashboard() {
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-xl font-bold">Lernenden-Codes erstellen</h3>
-                <p className="text-sm text-gray-600">Codes werden mit Tier-Pseudonymen generiert.</p>
+                <p className="text-sm text-gray-600">Codes werden automatisch mit Fantasienamen und fortlaufender Nummer generiert (z.B. «Flinker Drache 7»).</p>
               </div>
               <button onClick={() => setShowCodeModal(false)} className="px-3 py-1 border rounded-lg">Schliessen</button>
             </div>
@@ -1209,8 +1226,8 @@ export default function TeacherDashboard() {
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">Anzahl Lernende</label>
-                  <input type="number" min="1" max={TIER_NAMEN.length} value={codeAnzahl} onChange={(e) => setCodeAnzahl(parseInt(e.target.value) || 1)} className="w-full border rounded-lg px-3 py-2 text-lg font-medium" />
-                  <p className="text-xs text-gray-500 mt-1">Max. {TIER_NAMEN.length} (ein Tier pro Lernende:r)</p>
+                  <input type="number" min="1" max={MAX_CODES_PRO_DURCHGANG} value={codeAnzahl} onChange={(e) => setCodeAnzahl(parseInt(e.target.value) || 1)} className="w-full border rounded-lg px-3 py-2 text-lg font-medium" />
+                  <p className="text-xs text-gray-500 mt-1">Max. {MAX_CODES_PRO_DURCHGANG} pro Durchgang – Nummern zählen automatisch weiter</p>
                 </div>
                 <button onClick={createCodes} className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black">
                   <Plus className="w-4 h-4 inline mr-1" /> {codeAnzahl} Codes generieren

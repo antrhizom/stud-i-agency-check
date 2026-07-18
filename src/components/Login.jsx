@@ -82,7 +82,7 @@ const Login = () => {
             />
             <h1 className="text-3xl font-bold text-gray-900 mb-2">stud-i-agency-chek</h1>
             <p className="text-gray-600 text-sm">
-              Lernplattform für die Grundbildung Automobilfachmann/-frau EFZ
+              Digitale Lernplattform für die berufliche Grundbildung – Allgemeinbildung und Berufskunde, EBA und EFZ
             </p>
           </div>
 
@@ -202,7 +202,7 @@ const Login = () => {
 
         {/* Footer */}
         <p className="text-center text-gray-500 text-sm mt-8">
-          © 2025 stud-i-agency-chek · Digitale Berufslehre
+          © 2026 stud-i-agency-chek · Digitale Lernplattform
         </p>
       </div>
     </div>
