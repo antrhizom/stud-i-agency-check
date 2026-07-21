@@ -57,6 +57,18 @@ const STATUS_OPTIONS = [
   { id: 'stark', label: 'stark geübt', color: '#DCFCE7', weight: 3 }
 ];
 
+// Gesellschaftsinhalte: Verständnis-Skala statt Üben-Stufen
+const VERSTANDEN_OPTIONS = [
+  { id: 'nichtVerstanden', label: 'noch nicht verstanden', color: '#FEE2E2', weight: 1 },
+  { id: 'teilweiseVerstanden', label: 'teilweise verstanden', color: '#FEF3C7', weight: 2 },
+  { id: 'verstanden', label: 'verstanden', color: '#DCFCE7', weight: 3 }
+];
+
+// Für die Anzeige gespeicherter Einträge (beide Skalen)
+const ALL_STATUS_OPTIONS = [...STATUS_OPTIONS, ...VERSTANDEN_OPTIONS];
+
+const statusOptionsForType = (type) => (type === 'gesellschaft' ? VERSTANDEN_OPTIONS : STATUS_OPTIONS);
+
 const WHERE_OPTIONS = [
   'Im Unterricht',
   'Im Betrieb',
@@ -142,10 +154,12 @@ const Counter = ({ value, onChange, min = 0, max = 99 }) => {
 
 // Einzelner klickbarer Inhalt mit Erfassungs-Popup
 const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: Icon, onSave, entryCount = 0, recentEntries = [] }) => {
+  const statusOptions = statusOptionsForType(type);
+  const defaultStatus = statusOptions[0].id;
   const [showForm, setShowForm] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [formData, setFormData] = useState({
-    status: 'kurz',
+    status: defaultStatus,
     howMethod: '',
     howLearned: '',
     note: ''
@@ -157,12 +171,12 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
       return;
     }
     if (!formData.howLearned) {
-      alert('Bitte wähle aus, wie du geübt hast.');
+      alert('Bitte wähle aus, wie du geübt/gelernt hast.');
       return;
     }
     onSave(formData);
     // Felder zurücksetzen, Form bleibt offen zur Überprüfung
-    setFormData({ status: 'kurz', howMethod: '', howLearned: '', note: '' });
+    setFormData({ status: defaultStatus, howMethod: '', howLearned: '', note: '' });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
     // setShowForm(false) bewusst entfernt → Form bleibt offen
@@ -223,7 +237,7 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
         <div className="mt-2 p-3 bg-gray-50 rounded-lg border space-y-3">
           {/* Status */}
           <div className="flex flex-wrap gap-2">
-            {STATUS_OPTIONS.map(opt => (
+            {statusOptions.map(opt => (
               <button
                 key={opt.id}
                 type="button"
@@ -241,7 +255,7 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
           {/* Wo & Wie geübt */}
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[150px]">
-              <label className="text-xs text-gray-600 block mb-1">Wo geübt?</label>
+              <label className="text-xs text-gray-600 block mb-1">{type === 'gesellschaft' ? 'Wo gelernt?' : 'Wo geübt?'}</label>
               <select
                 value={formData.howMethod}
                 onChange={(e) => setFormData(prev => ({ ...prev, howMethod: e.target.value }))}
@@ -254,7 +268,7 @@ const ClickableInhalt = ({ type, label, code, inhalt, bgColor, textColor, icon: 
               </select>
             </div>
             <div className="flex-1 min-w-[150px]">
-              <label className="text-xs text-gray-600 block mb-1">Wie geübt?</label>
+              <label className="text-xs text-gray-600 block mb-1">{type === 'gesellschaft' ? 'Wie gelernt?' : 'Wie geübt?'}</label>
               <select
                 value={formData.howLearned}
                 onChange={(e) => setFormData(prev => ({ ...prev, howLearned: e.target.value }))}
@@ -526,7 +540,7 @@ const TransversaleThemenSection = ({ thema, entries, onSave }) => {
       return;
     }
     if (!data.howLearned) {
-      alert('Bitte wähle aus, wie du geübt hast.');
+      alert('Bitte wähle aus, wie du geübt/gelernt hast.');
       return;
     }
     onSave({
@@ -761,8 +775,8 @@ const CommentThread = ({ entry, onReply }) => {
 
 // Eintrag-Detailansicht Komponente
 const EntryDetailCard = ({ entry, themen, onDelete, onReply }) => {
-  const statusLabel = STATUS_OPTIONS.find(s => s.id === entry.status)?.label || entry.status;
-  const statusColor = STATUS_OPTIONS.find(s => s.id === entry.status)?.color || '#F3F4F6';
+  const statusLabel = ALL_STATUS_OPTIONS.find(s => s.id === entry.status)?.label || entry.status;
+  const statusColor = ALL_STATUS_OPTIONS.find(s => s.id === entry.status)?.color || '#F3F4F6';
   const thema = themen.find(t => t.id === entry.themaId);
 
   // Gesellschaft-Eintrag
