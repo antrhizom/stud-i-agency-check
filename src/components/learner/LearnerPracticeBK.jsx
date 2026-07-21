@@ -27,7 +27,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import DemoBanner from '../DemoBanner';
-import { StickerPickerModal, AlbumView } from './StickerAlbum';
+import { AlbumView } from './StickerAlbum';
 
 // Beispiel-Lernende:r, deren BK-Einträge im Demo-Modus angezeigt werden
 const DEMO_LEARNER_ID = 'demo-lernende-2';
@@ -246,7 +246,7 @@ function ZielCard({ ziel, semester, entries, onSave }) {
 // ============================================
 export default function LearnerPracticeBK({ subject }) {
   const { signOut, userData, currentUser } = useAuth();
-  const isDemo = userData?.isDemo === true;
+  const isDemo = userData?.isDemo === true || userData?.classId === 'demo-klasse';
   const effectiveLearnerId = isDemo ? DEMO_LEARNER_ID : currentUser?.uid;
   const bk = subject.bk;
   const [activeTab, setActiveTab] = useState('ueben'); // ueben | eintraege | fortschritt
@@ -258,9 +258,6 @@ export default function LearnerPracticeBK({ subject }) {
   const [replyText, setReplyText] = useState('');
   const [savingReply, setSavingReply] = useState(false);
 
-  // Abziehbilder-Album
-  const [stickers, setStickers] = useState([]);
-  const [pickerSource, setPickerSource] = useState(null);
 
   const loadEntries = async () => {
     if (!currentUser) return;
@@ -291,47 +288,11 @@ export default function LearnerPracticeBK({ subject }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, subject.id]);
 
-  // Album-Sticker laden (fachübergreifend pro Lernende:r)
-  useEffect(() => {
-    if (!effectiveLearnerId) return;
-    const load = async () => {
-      const snap = await getDocs(query(collection(db, 'albumStickers'), where('learnerId', '==', effectiveLearnerId)));
-      setStickers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    };
-    load().catch(console.error);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveLearnerId]);
-
-  // Leistungsziel stark geübt? -> Abziehbild anbieten (einmal pro Leistungsziel)
-  const maybeOfferSticker = (data) => {
-    if (data.status !== 'stark') return;
-    const sourceId = `${subject.id}:${data.zielId}`;
-    if (stickers.some(st => st.sourceId === sourceId)) return;
-    setPickerSource({ sourceId, sourceText: `${data.lnr} ${data.thema}` });
-  };
-
-  const pickSticker = async (st) => {
-    if (!pickerSource) return;
-    const stickerDoc = {
-      learnerId: effectiveLearnerId,
-      stickerId: st.id,
-      subjectId: subject.id,
-      sourceId: pickerSource.sourceId,
-      sourceText: pickerSource.sourceText || null,
-      createdAt: Timestamp.now()
-    };
-    setPickerSource(null);
-    if (isDemo) {
-      setStickers(prev => [...prev, { id: `demo-local-${Date.now()}`, ...stickerDoc }]);
-      return;
-    }
-    try {
-      const ref = await addDoc(collection(db, 'albumStickers'), stickerDoc);
-      setStickers(prev => [...prev, { id: ref.id, ...stickerDoc }]);
-    } catch (err) {
-      alert('Fehler: ' + (err?.message || String(err)));
-    }
-  };
+  // Album: gefüllte Felder = Leistungsziele, an denen gearbeitet wurde
+  const albumFilled = useMemo(
+    () => new Set(entries.map(e => e.zielId).filter(Boolean)).size,
+    [entries]
+  );
 
   const saveEntry = async (data) => {
     if (!currentUser) return;
@@ -355,7 +316,6 @@ export default function LearnerPracticeBK({ subject }) {
       setEntries(prev => [{ ...payload, id: newId, createdAt: new Date() }, ...prev]);
       setSaveToast(true);
       setTimeout(() => setSaveToast(false), 2500);
-      maybeOfferSticker(data);
     } catch (err) {
       alert('Fehler: ' + (err?.message || String(err)));
     }
@@ -505,7 +465,7 @@ export default function LearnerPracticeBK({ subject }) {
             className={`px-4 py-2 rounded-lg border flex items-center gap-2 transition-colors ${activeTab === 'album' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'}`}
           >
             <CheckCircle className="w-4 h-4" />
-            Album ({stickers.length})
+            Album ({albumFilled})
           </button>
         </div>
 
@@ -657,18 +617,9 @@ export default function LearnerPracticeBK({ subject }) {
 
         {/* Album Tab */}
         {activeTab === 'album' && (
-          <AlbumView stickers={stickers} accentColor={subject.color} />
+          <AlbumView subject={subject} entries={entries} />
         )}
       </div>
-
-      {/* Abziehbild-Auswahl nach erreichtem Leistungsziel */}
-      <StickerPickerModal
-        open={!!pickerSource}
-        ownedStickerIds={stickers.map(st => st.stickerId)}
-        sourceText={pickerSource?.sourceText}
-        onPick={pickSticker}
-        onClose={() => setPickerSource(null)}
-      />
     </div>
   );
 }

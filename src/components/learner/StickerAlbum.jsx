@@ -1,144 +1,196 @@
-import React from 'react';
-import { Sticker, X, Sparkles } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Sticker, Lock } from 'lucide-react';
 
 // ============================================
-// STICKER-ALBUM
-// Wer eine Kompetenz erreicht (oberste Stufe «stark geübt» bzw.
-// «verstanden»), darf ein Abziehbild auswählen – es wird ins Album geklebt.
+// KOMPETENZ-ALBUM (Panini-Prinzip)
+// Alle Felder sind durch den Lehrplan vordefiniert – ein Feld pro
+// Kompetenz (ABU) bzw. Leistungsziel (Berufskunde). Die Felder füllen
+// sich automatisch mit der Farbe des Themas/Gebiets, sobald daran
+// gearbeitet wurde, und zeigen das erreichte Niveau:
+//   Starter (1× kurz geübt / noch nicht verstanden)
+//   Advanced (mittel geübt / teilweise verstanden)
+//   Expert (stark geübt / verstanden)
 // ============================================
 
-export const STICKER_POOL = [
-  { id: 'loewe', emoji: '🦁', label: 'Löwe', color: '#F59E0B' },
-  { id: 'drache', emoji: '🐉', label: 'Drache', color: '#10B981' },
-  { id: 'adler', emoji: '🦅', label: 'Adler', color: '#78716C' },
-  { id: 'fuchs', emoji: '🦊', label: 'Fuchs', color: '#EA580C' },
-  { id: 'wolf', emoji: '🐺', label: 'Wolf', color: '#64748B' },
-  { id: 'schildkroete', emoji: '🐢', label: 'Schildkröte', color: '#22C55E' },
-  { id: 'oktopus', emoji: '🐙', label: 'Oktopus', color: '#EC4899' },
-  { id: 'pinguin', emoji: '🐧', label: 'Pinguin', color: '#0EA5E9' },
-  { id: 'rennauto', emoji: '🏎️', label: 'Rennauto', color: '#DC2626' },
-  { id: 'auto', emoji: '🚗', label: 'Auto', color: '#2563EB' },
-  { id: 'rad', emoji: '🛞', label: 'Rad', color: '#525252' },
-  { id: 'schraubschluessel', emoji: '🔧', label: 'Schraubenschlüssel', color: '#6B7280' },
-  { id: 'zahnrad', emoji: '⚙️', label: 'Zahnrad', color: '#71717A' },
-  { id: 'batterie', emoji: '🔋', label: 'Batterie', color: '#16A34A' },
-  { id: 'blitz', emoji: '⚡', label: 'Blitz', color: '#EAB308' },
-  { id: 'magnet', emoji: '🧲', label: 'Magnet', color: '#EF4444' },
-  { id: 'pflanze', emoji: '🌱', label: 'Pflanze', color: '#15803D' },
-  { id: 'erde', emoji: '🌍', label: 'Erde', color: '#0D9488' },
-  { id: 'rakete', emoji: '🚀', label: 'Rakete', color: '#7C3AED' },
-  { id: 'stern', emoji: '🌟', label: 'Stern', color: '#F59E0B' },
-  { id: 'diamant', emoji: '💎', label: 'Diamant', color: '#06B6D4' },
-  { id: 'pokal', emoji: '🏆', label: 'Pokal', color: '#D97706' },
-  { id: 'medaille', emoji: '🥇', label: 'Goldmedaille', color: '#CA8A04' },
-  { id: 'zielscheibe', emoji: '🎯', label: 'Zielscheibe', color: '#B91C1C' }
+export const NIVEAUS = [
+  { id: 'starter', label: 'Starter', weight: 1, badge: '🥉', ring: '#B45309' },
+  { id: 'advanced', label: 'Advanced', weight: 2, badge: '🥈', ring: '#64748B' },
+  { id: 'expert', label: 'Expert', weight: 3, badge: '🥇', ring: '#D97706' }
 ];
 
-export const getStickerById = (id) => STICKER_POOL.find(s => s.id === id) || null;
+const STATUS_WEIGHT = {
+  // Üben-Skala (Sprachmodi, Schlüsselkompetenzen, BK)
+  kurz: 1, mittel: 2, stark: 3,
+  // Verständnis-Skala (Gesellschaftsinhalte)
+  nichtVerstanden: 1, teilweiseVerstanden: 2, verstanden: 3
+};
+
+const GEBIET_COLORS = {
+  'Betriebliche Prozesse': '#0EA5E9',
+  'Elektrotechnik': '#F59E0B',
+  'Elektro- und Alternativantrieb': '#10B981',
+  'Fahrwerk': '#8B5CF6',
+  'Antrieb': '#EC4899',
+  'Motor': '#DC2626',
+  'Stoffkunde': '#14B8A6'
+};
+
+const niveauForWeight = (w) => NIVEAUS.find(n => n.weight === Math.min(3, Math.max(1, w))) || NIVEAUS[0];
+
+// Kürzel für die Feldbeschriftung: k1-2-3 → «1.2.3»
+const kompetenzKurz = (id) => (id || '').replace(/^k/, '').split('-').join('.');
 
 // ============================================
-// Auswahl-Modal: erscheint nach dem Erreichen einer Kompetenz
+// Einzelnes Album-Feld
 // ============================================
-export function StickerPickerModal({ open, ownedStickerIds = [], sourceText, onPick, onClose }) {
-  if (!open) return null;
+function AlbumFeld({ code, title, color, niveau }) {
+  const filled = !!niveau;
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between gap-3 mb-1">
-          <h3 className="text-xl font-bold flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-amber-500" />
-            Kompetenz erreicht!
-          </h3>
-          <button onClick={onClose} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg" title="Später auswählen">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <p className="text-sm text-gray-600 mb-1">
-          Super gemacht! Wähle ein Abziehbild als Belohnung – es wird in dein Album geklebt.
-        </p>
-        {sourceText && <p className="text-xs text-gray-400 italic mb-4">{sourceText}</p>}
-
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
-          {STICKER_POOL.map(st => {
-            const owned = ownedStickerIds.includes(st.id);
-            return (
-              <button
-                key={st.id}
-                disabled={owned}
-                onClick={() => onPick(st)}
-                className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center gap-1 transition transform ${
-                  owned
-                    ? 'opacity-35 border-gray-200 cursor-not-allowed'
-                    : 'hover:scale-110 hover:shadow-lg cursor-pointer'
-                }`}
-                style={owned ? {} : { borderColor: st.color + '60', backgroundColor: st.color + '10' }}
-                title={owned ? `${st.label} – schon im Album` : st.label}
-              >
-                <span className="text-3xl leading-none">{st.emoji}</span>
-                <span className="text-[0.6rem] text-gray-500 leading-none px-1 text-center">{st.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <p className="text-xs text-gray-400 mt-4 text-center">
-          Bereits gesammelte Abziehbilder sind ausgegraut – jedes gibt es nur einmal.
-        </p>
-      </div>
+    <div
+      className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 relative p-1 transition ${
+        filled ? 'shadow-md text-white' : 'border-2 border-dashed border-gray-300 bg-white/70'
+      }`}
+      style={filled ? { backgroundColor: color, border: `2px solid ${color}` } : {}}
+      title={filled ? `${code} · ${title} – Niveau ${niveau.label}` : `${code} · ${title} – noch offen`}
+    >
+      {filled ? (
+        <>
+          <span className="text-xl leading-none drop-shadow">{niveau.badge}</span>
+          <span className="text-[0.65rem] font-bold leading-none">{code}</span>
+          <span className="text-[0.55rem] font-medium leading-none opacity-90">{niveau.label}</span>
+        </>
+      ) : (
+        <>
+          <Lock className="w-3.5 h-3.5 text-gray-300" />
+          <span className="text-[0.65rem] font-semibold text-gray-400 leading-none">{code}</span>
+        </>
+      )}
     </div>
   );
 }
 
 // ============================================
-// Album-Ansicht: Panini-Feld mit allen Slots
+// Album-Ansicht
+// subject: Fach aus der Registry · entries: Einträge der/des Lernenden
 // ============================================
-export function AlbumView({ stickers = [], accentColor = '#2563EB' }) {
-  const ownedById = new Map(stickers.map(s => [s.stickerId, s]));
+export function AlbumView({ subject, entries = [] }) {
+  // Höchstes erreichtes Niveau pro Kompetenz/Leistungsziel
+  const levelByKey = useMemo(() => {
+    const map = new Map();
+    for (const e of entries) {
+      const key = subject.kind === 'bk' ? e.zielId : e.kompetenzId;
+      if (!key) continue;
+      const w = STATUS_WEIGHT[e.status] || 1;
+      if (!map.has(key) || map.get(key) < w) map.set(key, w);
+    }
+    return map;
+  }, [entries, subject.kind]);
+
+  // Vordefinierte Felder aus dem Lehrplan aufbauen
+  const sections = useMemo(() => {
+    if (subject.kind === 'bk') {
+      return (subject.bk?.semester || []).map(sem => ({
+        id: `sem-${sem.semester}`,
+        title: `${sem.semester}. Semester`,
+        color: '#475569',
+        felder: sem.gebiete.flatMap(g =>
+          g.ziele.map(z => ({
+            key: `s${sem.semester}-${z.lnr.replace(/\./g, '')}`,
+            code: z.lnr,
+            title: `${g.name} · ${z.thema}`,
+            color: GEBIET_COLORS[g.name] || '#6B7280'
+          }))
+        )
+      }));
+    }
+    return (subject.curriculum?.themen || []).map(t => ({
+      id: t.id,
+      title: `Thema ${t.order}: ${t.title}`,
+      color: t.color,
+      felder: t.lebensbezuege.flatMap(lb =>
+        lb.kompetenzen.map(k => ({
+          key: k.id,
+          code: kompetenzKurz(k.id),
+          title: k.text,
+          color: t.color
+        }))
+      )
+    })).filter(sec => sec.felder.length > 0);
+  }, [subject]);
+
+  const totalFelder = sections.reduce((acc, sec) => acc + sec.felder.length, 0);
+  const gefuellt = sections.reduce(
+    (acc, sec) => acc + sec.felder.filter(f => levelByKey.has(f.key)).length, 0
+  );
+  const countByNiveau = NIVEAUS.map(n => ({
+    ...n,
+    count: sections.reduce(
+      (acc, sec) => acc + sec.felder.filter(f => levelByKey.get(f.key) === n.weight).length, 0
+    )
+  }));
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-6">
       <h2 className="text-lg font-bold mb-1 flex items-center gap-2">
-        <Sticker className="w-5 h-5" style={{ color: accentColor }} />
-        Mein Abziehbilder-Album
+        <Sticker className="w-5 h-5" style={{ color: subject.color }} />
+        Mein Kompetenz-Album
       </h2>
-      <p className="text-sm text-gray-600 mb-5">
-        Für jede erreichte Kompetenz («verstanden» oder «stark geübt») darfst du ein Abziehbild auswählen.
-        <span className="ml-2 font-medium" style={{ color: accentColor }}>{stickers.length} / {STICKER_POOL.length} gesammelt</span>
+      <p className="text-sm text-gray-600 mb-3">
+        Jede Kompetenz hat ihr festes Feld in der Farbe ihres {subject.kind === 'bk' ? 'Gebiets' : 'Themas'}.
+        Sobald du daran arbeitest, füllt sich das Feld – dein Niveau steigt von Starter über Advanced bis Expert.
       </p>
 
-      <div
-        className="rounded-2xl border-4 border-dashed p-5"
-        style={{ borderColor: accentColor + '30', backgroundColor: accentColor + '06' }}
-      >
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-4">
-          {STICKER_POOL.map(st => {
-            const owned = ownedById.get(st.id);
-            return (
-              <div
-                key={st.id}
-                className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-1 relative ${
-                  owned ? 'shadow-md rotate-0' : 'border-2 border-dashed border-gray-300 bg-white/60'
-                }`}
-                style={owned ? { backgroundColor: st.color + '15', border: `2px solid ${st.color}55`, transform: `rotate(${((st.id.length % 5) - 2) * 2}deg)` } : {}}
-                title={owned ? `${st.label} – ${owned.sourceText || 'Kompetenz erreicht'}` : 'Noch nicht freigeschaltet'}
-              >
-                {owned ? (
-                  <>
-                    <span className="text-4xl leading-none drop-shadow-sm">{st.emoji}</span>
-                    <span className="text-[0.6rem] font-medium text-gray-600 leading-none">{st.label}</span>
-                  </>
-                ) : (
-                  <span className="text-2xl text-gray-300 font-bold">?</span>
-                )}
-              </div>
-            );
-          })}
+      {/* Fortschritt + Legende */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <span className="text-sm font-semibold" style={{ color: subject.color }}>
+          {gefuellt} / {totalFelder} Feldern gefüllt
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {countByNiveau.map(n => (
+            <span key={n.id} className="text-xs px-2 py-1 rounded-full bg-gray-100 border flex items-center gap-1">
+              {n.badge} {n.label}: <strong>{n.count}</strong>
+            </span>
+          ))}
         </div>
       </div>
 
-      {stickers.length === 0 && (
+      <div className="space-y-6">
+        {sections.map(sec => {
+          const secFilled = sec.felder.filter(f => levelByKey.has(f.key)).length;
+          return (
+            <div key={sec.id}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sec.color }} />
+                <h3 className="font-semibold text-sm text-gray-800">{sec.title}</h3>
+                <span className="text-xs text-gray-400">{secFilled}/{sec.felder.length}</span>
+              </div>
+              <div
+                className="rounded-xl border-2 border-dashed p-3"
+                style={{ borderColor: sec.color + '40', backgroundColor: sec.color + '08' }}
+              >
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2.5">
+                  {sec.felder.map(f => {
+                    const w = levelByKey.get(f.key);
+                    return (
+                      <AlbumFeld
+                        key={f.key}
+                        code={f.code}
+                        title={f.title}
+                        color={f.color}
+                        niveau={w ? niveauForWeight(w) : null}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {gefuellt === 0 && (
         <p className="text-sm text-gray-500 mt-4 text-center">
-          Noch keine Abziehbilder – erfasse eine Kompetenz mit «verstanden» oder «stark geübt», um dein erstes Bild freizuschalten!
+          Noch keine Felder gefüllt – erfasse deine erste Kompetenz, um das Album zu starten!
         </p>
       )}
     </div>

@@ -68,7 +68,14 @@ export default function CodeLogin({ role, onBack, initialCode = '' }) {
 
       // 2) Login versuchen, sonst erstellen
       try {
-        await signInWithEmailAndPassword(auth, email, password);
+        const signInResult = await signInWithEmailAndPassword(auth, email, password);
+        // Demo-Codes: Flag bei jedem Login sicherstellen (repariert Alt-Konten)
+        if (codeData.isDemo) {
+          await setDoc(doc(db, 'users', signInResult.user.uid), {
+            isDemo: true,
+            ...(codeData.classId ? { classId: codeData.classId } : {})
+          }, { merge: true });
+        }
         window.location.href = target;
         return;
       } catch (loginError) {

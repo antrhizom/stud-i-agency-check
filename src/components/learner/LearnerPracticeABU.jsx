@@ -48,7 +48,7 @@ import {
 } from 'lucide-react';
 import ZirkularitaetDashboard from './ZirkularitaetDashboard';
 import DemoBanner from '../DemoBanner';
-import { StickerPickerModal, AlbumView } from './StickerAlbum';
+import { AlbumView } from './StickerAlbum';
 
 // Beispiel-Lernende:r, deren Einträge im Demo-Modus angezeigt werden
 const DEMO_LEARNER_ID = 'demo-lernende-1';
@@ -926,7 +926,7 @@ const EntryDetailCard = ({ entry, themen, onDelete, onReply }) => {
 
 export default function LearnerPracticeABU({ subject: subjectProp }) {
   const { signOut, userData, currentUser } = useAuth();
-  const isDemo = userData?.isDemo === true;
+  const isDemo = userData?.isDemo === true || userData?.classId === 'demo-klasse';
   const subject = subjectProp || getSubjectById(DEFAULT_SUBJECT_ID);
   const effectiveLearnerId = isDemo ? DEMO_LEARNER_ID : currentUser?.uid;
   const themen = subject.curriculum.themen;
@@ -947,9 +947,6 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
   // Filter für "Meine Einträge"
   const [entryFilter, setEntryFilter] = useState(null); // null | 'gesellschaft' | 'sprachmodus' | 'schluesselkompetenz' | 'transversal' | 'comments'
 
-  // Abziehbilder-Album
-  const [stickers, setStickers] = useState([]);
-  const [pickerSource, setPickerSource] = useState(null); // { sourceId, sourceText }
 
   // Load entries - ohne orderBy um Index-Fehler zu vermeiden
   const loadEntries = async () => {
@@ -1002,50 +999,11 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, subject.id]);
 
-  // Album-Sticker laden (fachübergreifend pro Lernende:r)
-  useEffect(() => {
-    if (!effectiveLearnerId) return;
-    const load = async () => {
-      const snap = await getDocs(query(collection(db, 'albumStickers'), where('learnerId', '==', effectiveLearnerId)));
-      setStickers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    };
-    load().catch(console.error);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveLearnerId]);
-
-  // Kompetenz erreicht? -> Abziehbild zur Auswahl anbieten (einmal pro Kompetenz)
-  const maybeOfferSticker = (data) => {
-    const topStatus = data.status === 'stark' || data.status === 'verstanden';
-    if (!topStatus) return;
-    const sourceKey = data.kompetenzId || (data.transversalId ? `transversal-${data.transversalId}` : null);
-    if (!sourceKey) return;
-    const sourceId = `${subject.id}:${sourceKey}`;
-    if (stickers.some(st => st.sourceId === sourceId)) return;
-    setPickerSource({ sourceId, sourceText: data.inhalt || 'Kompetenz erreicht' });
-  };
-
-  const pickSticker = async (st) => {
-    if (!pickerSource) return;
-    const stickerDoc = {
-      learnerId: effectiveLearnerId,
-      stickerId: st.id,
-      subjectId: subject.id,
-      sourceId: pickerSource.sourceId,
-      sourceText: pickerSource.sourceText || null,
-      createdAt: Timestamp.now()
-    };
-    setPickerSource(null);
-    if (isDemo) {
-      setStickers(prev => [...prev, { id: `demo-local-${Date.now()}`, ...stickerDoc }]);
-      return;
-    }
-    try {
-      const ref = await addDoc(collection(db, 'albumStickers'), stickerDoc);
-      setStickers(prev => [...prev, { id: ref.id, ...stickerDoc }]);
-    } catch (err) {
-      alert('Fehler: ' + (err?.message || String(err)));
-    }
-  };
+  // Album: gefüllte Felder = Kompetenzen, an denen gearbeitet wurde
+  const albumFilled = useMemo(
+    () => new Set(entries.map(e => e.kompetenzId).filter(Boolean)).size,
+    [entries]
+  );
 
   // Generischer Save-Handler – kein setLoading(true), damit ThemaCards nicht unmounten
   const saveEntry = async (data) => {
@@ -1071,7 +1029,6 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
       setEntries(prev => [{ ...payload, id: newId, createdAt: new Date() }, ...prev]);
       setSaveToast(true);
       setTimeout(() => setSaveToast(false), 2500);
-      maybeOfferSticker(data);
     } catch (err) {
       alert('Fehler: ' + (err?.message || String(err)));
     }
@@ -1237,7 +1194,7 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
             }`}
           >
             <Sparkles className="w-4 h-4" />
-            Album ({stickers.length})
+            Album ({albumFilled})
           </button>
         </div>
 
@@ -1401,18 +1358,9 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
 
         {/* Album Tab */}
         {activeTab === 'album' && (
-          <AlbumView stickers={stickers} accentColor={subject.color} />
+          <AlbumView subject={subject} entries={entries} />
         )}
       </div>
-
-      {/* Abziehbild-Auswahl nach erreichter Kompetenz */}
-      <StickerPickerModal
-        open={!!pickerSource}
-        ownedStickerIds={stickers.map(st => st.stickerId)}
-        sourceText={pickerSource?.sourceText}
-        onPick={pickSticker}
-        onClose={() => setPickerSource(null)}
-      />
     </div>
   );
 }

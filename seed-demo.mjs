@@ -175,16 +175,9 @@ for (const e of bkEntries) {
   });
 }
 
-// Abziehbilder für die Beispiel-Lernenden (erreichte Kompetenzen)
-const stickerDocs = [
-  { id: 'demo-sticker-1', learnerId: 'demo-lernende-1', stickerId: 'loewe', subjectId: 'abu-efz3', sourceId: 'abu-efz3:k1-1-1', sourceText: 'Lehrvertragsrecht, sozial akzeptable Lösungen', createdAt: ts(2023, 9, 14) },
-  { id: 'demo-sticker-2', learnerId: 'demo-lernende-1', stickerId: 'stern', subjectId: 'abu-efz3', sourceId: 'abu-efz3:k5-1-1', sourceText: 'An gesellschaftlichen Prozessen partizipieren', createdAt: ts(2024, 12, 5) },
-  { id: 'demo-sticker-3', learnerId: 'demo-lernende-2', stickerId: 'rennauto', subjectId: 'bk-af', sourceId: 'bk-af:s1-3407', sourceText: '3.4.07 Informatik', createdAt: ts(2023, 10, 5) }
-];
-for (const st of stickerDocs) {
-  const { id, ...data } = st;
-  await setDoc(doc(db, 'albumStickers', id), data);
-}
+// Hinweis: Das Kompetenz-Album leitet sich automatisch aus den Einträgen
+// ab (ein Feld pro Kompetenz/Leistungsziel, Niveau = höchster Status),
+// daher braucht es keine separaten Sticker-Dokumente mehr.
 
 // Bereits genutzte Demo-Konten nachträglich als Demo markieren
 for (const codeId of ['demo-lernende', 'demo-lehrperson']) {
@@ -196,5 +189,5 @@ for (const codeId of ['demo-lernende', 'demo-lehrperson']) {
   }
 }
 
-console.log('Demo-Daten angelegt: Demoklasse 3-jährig (abu-efz3 + bk-af, Beitritts-Code DEMO99), Codes LERNEN/SCHULE, 2 Beispiel-Lernende mit je 4 Einträgen + Abziehbilder');
+console.log('Demo-Daten angelegt: Demoklasse 3-jährig (abu-efz3 + bk-af, Beitritts-Code DEMO99), Codes LERNEN/SCHULE, 2 Beispiel-Lernende mit je 4 Einträgen (füllen automatisch das Kompetenz-Album)');
 process.exit(0);
