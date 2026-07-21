@@ -1,15 +1,21 @@
 import React, { useMemo } from 'react';
-import { Lock, Sparkles, Plus } from 'lucide-react';
-import { getSprachmodusById } from '../../data/curriculumEBA';
+import {
+  getGesellschaftsinhaltById,
+  getSprachmodusById,
+  getSchluesselkompetenzById,
+  uiColors
+} from '../../data/curriculumEBA';
+import { getRStufe, getSchluesselForThema } from '../../data/zirkularitaet';
+import { Sparkles } from 'lucide-react';
 
 // ============================================
-// KOMPETENZ-SAMMELALBUM (Manga-Sammelkarten)
-// Pro Thema → individueller Lebensbezug gibt es für jede Kompetenz eine
-// vordefinierte, graue Sammelkarte. Sie wird bei Durchführung in der
-// Themenfarbe eingefärbt und trägt eine R-Stufe (Zirkularität):
-//   R1 = Beginner · R2 = Advanced · R3 = Expert
-// Unter jedem Lebensbezug erscheinen zusätzlich freiwillig durchgeführte
-// Kompetenzen (z.B. optionale Sprachmodi) als Bonus-Marken.
+// KOMPETENZ-SAMMELALBUM (Manga-Sammelkarten, SLP-Zirkularität)
+// Aufbau exakt nach SLP:
+//   Pro Thema die zugewiesenen Schlüsselkompetenzen (mit R-Stufe),
+//   pro Kompetenz die gesellschaftlichen Inhalte und Sprachmodi (mit R-Stufe).
+// Jede Karte trägt ihre im SLP festgelegte Zirkularitätsstufe (R1, R2, …).
+// Alle Karten sind grau vorerzeugt und werden bei Durchführung eingefärbt;
+// die Farbintensität zeigt, wie intensiv geübt wurde.
 // ============================================
 
 const STATUS_WEIGHT = {
@@ -17,14 +23,13 @@ const STATUS_WEIGHT = {
   nichtVerstanden: 1, teilweiseVerstanden: 2, verstanden: 3
 };
 
-export const R_STUFEN = [
-  { r: 1, label: 'Beginner' },
-  { r: 2, label: 'Advanced' },
-  { r: 3, label: 'Expert' }
-];
-const rLabel = (r) => R_STUFEN.find(x => x.r === r)?.label || '';
+// R-Stufe → Niveau-Bezeichnung (R1 Beginner, R2 Advanced, R3+ Expert)
+const rNiveau = (r) => {
+  if (!r) return '';
+  const n = parseInt(r.slice(1), 10);
+  return n <= 1 ? 'Beginner' : n === 2 ? 'Advanced' : 'Expert';
+};
 
-// Manga-/Anime-artige Symbole, deterministisch pro Kompetenz zugewiesen
 const SYMBOLE = [
   '⚡', '🔥', '💫', '⭐', '✨', '🎯', '🚀', '🛡️', '⚔️', '👑',
   '💎', '🏆', '🐉', '🦅', '🦁', '🐺', '🦊', '🌊', '🌪️', '❄️',
@@ -37,139 +42,94 @@ function symbolFor(id) {
 }
 
 const GEBIET_COLORS = {
-  'Betriebliche Prozesse': '#0EA5E9',
-  'Elektrotechnik': '#F59E0B',
-  'Elektro- und Alternativantrieb': '#10B981',
-  'Fahrwerk': '#8B5CF6',
-  'Antrieb': '#EC4899',
-  'Motor': '#DC2626',
-  'Stoffkunde': '#14B8A6'
+  'Betriebliche Prozesse': '#0EA5E9', 'Elektrotechnik': '#F59E0B',
+  'Elektro- und Alternativantrieb': '#10B981', 'Fahrwerk': '#8B5CF6',
+  'Antrieb': '#EC4899', 'Motor': '#DC2626', 'Stoffkunde': '#14B8A6'
 };
 
-// k1-2-3 → «1.2.3»
 const kompetenzCode = (id) => (id || '').replace(/^k/, '').split('-').join('.');
 
-// ============================================
-// Sammelkarte (Manga-Style)
-// ============================================
-function Sammelkarte({ symbol, code, title, color, r, plus = 0 }) {
-  const filled = !!r;
-  const rInfo = filled ? rLabel(r) : '';
+// Füllung nach Übungs-Status (0 = grau/nicht erfasst)
+function fill(color, statusW) {
+  if (!statusW) return { style: {}, cls: 'border-2 border-dashed border-gray-300 bg-white/70', text: 'text-gray-400', done: false };
+  if (statusW === 1) return { style: { backgroundColor: color + '2E', borderColor: color + '99' }, cls: 'border-2', text: '', textColor: color, done: true };
+  if (statusW === 2) return { style: { backgroundColor: color + 'BF', borderColor: color }, cls: 'border-2', text: 'text-white', done: true };
+  return { style: { backgroundColor: color, borderColor: color }, cls: 'border-2 shadow-md', text: 'text-white', done: true, holo: true };
+}
 
-  // Farbabstufung nach R-Stufe
-  let cardStyle, headStyle, textCls, holo = false;
-  if (!filled) {
-    cardStyle = { borderColor: '#D1D5DB' };
-    headStyle = { background: 'repeating-linear-gradient(45deg,#F3F4F6,#F3F4F6 6px,#E5E7EB 6px,#E5E7EB 12px)' };
-    textCls = 'text-gray-400';
-  } else if (r === 1) {
-    cardStyle = { borderColor: color + '88', backgroundColor: color + '10' };
-    headStyle = { backgroundColor: color + '33' };
-    textCls = 'text-gray-800';
-  } else if (r === 2) {
-    cardStyle = { borderColor: color, backgroundColor: color + '22' };
-    headStyle = { backgroundColor: color + 'CC' };
-    textCls = 'text-gray-900';
-  } else {
-    holo = true;
-    cardStyle = { borderColor: color, backgroundColor: color + '22' };
-    headStyle = { background: `linear-gradient(135deg, ${color}, #ffffff88 45%, ${color})` };
-    textCls = 'text-gray-900';
-  }
-
+// ============================================
+// Baustein-Karte (Gesellschaftsinhalt / Sprachmodus / Schlüsselkompetenz)
+// ============================================
+function Karte({ symbol, code, label, color, r, statusW, big = false }) {
+  const f = fill(color, statusW);
+  const niveau = rNiveau(r);
+  const textColor = f.textColor;
   return (
     <div
-      className="relative rounded-xl border-2 overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-shadow"
-      style={cardStyle}
-      title={`${code} · ${title}${filled ? ` – R${r} ${rInfo}` : ' – noch offen'}${plus ? ` · +${plus} freiwillig` : ''}`}
+      className={`relative rounded-xl flex flex-col overflow-hidden ${f.cls}`}
+      style={f.style}
+      title={`${code ? code + ' · ' : ''}${label}${r ? ` – ${r} ${niveau}` : ''}${f.done ? '' : ' (noch offen)'}`}
     >
-      {/* Plus-Auszeichnung */}
-      {plus > 0 && (
-        <span className="absolute top-1 right-1 z-10 bg-amber-400 text-amber-900 text-[0.6rem] font-extrabold rounded-full px-1.5 leading-tight shadow border border-white flex items-center">
-          <Plus className="w-2.5 h-2.5" strokeWidth={3} />{plus}
+      {/* R-Badge (feste SLP-Stufe), immer sichtbar */}
+      {r && (
+        <span
+          className="absolute top-1 right-1 z-10 text-[0.58rem] font-extrabold rounded px-1 leading-tight border"
+          style={f.done
+            ? { backgroundColor: '#ffffffcc', color: color, borderColor: '#ffffff' }
+            : { backgroundColor: '#F3F4F6', color: '#9CA3AF', borderColor: '#E5E7EB' }}
+        >
+          {r}
         </span>
       )}
-
-      {/* Symbol-Kopf */}
-      <div className="relative h-14 flex items-center justify-center" style={headStyle}>
-        <span className={`text-3xl leading-none ${filled ? '' : 'grayscale opacity-40'}`}>{symbol}</span>
-        {holo && <span className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(115deg, transparent 30%, #ffffff66 50%, transparent 70%)' }} />}
-        {!filled && (
-          <span className="absolute inset-0 flex items-center justify-center">
-            <Lock className="w-5 h-5 text-gray-400" />
-          </span>
-        )}
+      <div className={`flex items-center justify-center ${big ? 'h-10' : 'h-8'}`}>
+        <span className={`${big ? 'text-2xl' : 'text-xl'} leading-none ${f.done ? '' : 'grayscale opacity-40'}`}>{symbol}</span>
+        {f.holo && <span className="absolute top-0 left-0 right-0 h-10 pointer-events-none" style={{ background: 'linear-gradient(115deg,transparent 35%,#ffffff55 50%,transparent 65%)' }} />}
       </div>
-
-      {/* Karten-Körper */}
-      <div className="flex-1 px-1.5 py-1.5 flex flex-col items-center text-center gap-0.5">
-        <span className={`text-[0.7rem] font-extrabold leading-none ${textCls}`}>{code}</span>
-        <span className={`text-[0.58rem] leading-tight line-clamp-3 ${filled ? 'text-gray-600' : 'text-gray-400'}`}>{title}</span>
-      </div>
-
-      {/* R-Stufen-Fuss */}
-      <div className="px-1.5 py-1 flex items-center justify-center border-t" style={{ borderColor: filled ? color + '44' : '#E5E7EB' }}>
-        {filled ? (
-          <span className="text-[0.62rem] font-bold flex items-center gap-1" style={{ color }}>
-            <span className="px-1.5 py-0.5 rounded text-white text-[0.58rem]" style={{ backgroundColor: color }}>R{r}</span>
-            {rInfo}
-          </span>
-        ) : (
-          <span className="text-[0.58rem] text-gray-400">noch offen</span>
-        )}
+      <div className="px-1 pb-1 flex flex-col items-center text-center gap-0.5">
+        {code && <span className={`text-[0.62rem] font-bold leading-none ${f.text || ''}`} style={!f.text && textColor ? { color: textColor } : {}}>{code}</span>}
+        <span className={`text-[0.55rem] leading-tight line-clamp-2 ${f.done ? (f.text || 'text-gray-600') : 'text-gray-400'}`} style={!f.text && f.done && textColor ? { color: textColor } : {}}>{label}</span>
+        {r && <span className={`text-[0.5rem] leading-none ${f.done ? (f.text ? 'opacity-90' : '') : 'text-gray-400'}`} style={!f.text && f.done && textColor ? { color: textColor } : {}}>{niveau}</span>}
       </div>
     </div>
   );
 }
 
-// R-Stufe einer ABU-Kompetenz = höchstes erreichtes Niveau über alle ihre
-// (Pflicht-)Bestandteile: Gesellschaftsinhalte, Sprachmodi, Schlüsselkompetenzen.
-//   R1 = Beginner (kurz / noch nicht verstanden)
-//   R2 = Advanced (mittel / teilweise verstanden)
-//   R3 = Expert (stark / verstanden)
-function kompetenzProgress(k, entries) {
-  const ms = entries.filter(e => e.kompetenzId === k.id && !e.isOptional);
-  let r = 0;
-  for (const e of ms) r = Math.max(r, STATUS_WEIGHT[e.status] || 1);
-  const plus = Math.min(3, entries.filter(e => e.kompetenzId === k.id && e.isOptional).length);
-  return { r, plus };
-}
-
 // ============================================
-// ABU: Sammelalbum nach Thema → Lebensbezug
+// ABU: Album nach SLP-Zirkularität
 // ============================================
 function AbuAlbum({ subject, entries }) {
+  const sid = subject.id;
   const themen = subject.curriculum?.themen || [];
 
-  const data = useMemo(() => themen.map(t => ({
-    thema: t,
-    lebensbezuege: t.lebensbezuege.map(lb => {
-      const karten = lb.kompetenzen.map(k => ({
-        id: k.id,
-        code: kompetenzCode(k.id),
-        title: k.text,
-        symbol: symbolFor(k.id),
-        ...kompetenzProgress(k, entries)
-      }));
-      // Zusätzlich (freiwillig) durchgeführte Sprachmodi in diesem Lebensbezug
-      const kompIds = new Set(lb.kompetenzen.map(k => k.id));
-      const bonusMap = new Map();
-      for (const e of entries) {
-        if (!e.isOptional || !kompIds.has(e.kompetenzId)) continue;
-        const modus = getSprachmodusById(e.modus);
-        const key = e.modus;
-        if (!bonusMap.has(key)) bonusMap.set(key, { label: modus?.label || e.modus, code: modus?.code, count: 0 });
-        bonusMap.get(key).count++;
-      }
-      return { lb, karten, bonus: [...bonusMap.values()] };
-    })
-  })), [themen, entries]);
+  const gesW = (kid, ber) => {
+    let w = 0;
+    for (const e of entries) if (e.type === 'gesellschaft' && e.kompetenzId === kid && e.bereich === ber) w = Math.max(w, STATUS_WEIGHT[e.status] || 1);
+    return w;
+  };
+  const sprW = (kid, modus) => {
+    let w = 0;
+    for (const e of entries) if (e.type === 'sprachmodus' && e.kompetenzId === kid && e.modus === modus) w = Math.max(w, STATUS_WEIGHT[e.status] || 1);
+    return w;
+  };
+  // Schlüsselkompetenz zählt nur im Thema, in dem sie erfasst wurde
+  const skW = (skId, themaId) => {
+    let w = 0;
+    for (const e of entries) if (e.type === 'schluesselkompetenz' && e.schluesselkompetenzId === skId && e.themaId === themaId) w = Math.max(w, STATUS_WEIGHT[e.status] || 1);
+    return w;
+  };
 
-  const alleKarten = data.flatMap(t => t.lebensbezuege.flatMap(l => l.karten));
-  const total = alleKarten.length;
-  const erreicht = alleKarten.filter(k => k.r > 0).length;
-  const countByR = R_STUFEN.map(n => ({ ...n, count: alleKarten.filter(k => k.r === n.r).length }));
-  const plusTotal = alleKarten.reduce((a, k) => a + k.plus, 0);
+  // Statistik über alle Bausteine
+  const stats = useMemo(() => {
+    let total = 0, done = 0;
+    for (const t of themen) {
+      for (const { skId } of getSchluesselForThema(sid, t.order)) { total++; if (skW(skId, t.id)) done++; }
+      for (const lb of t.lebensbezuege) for (const k of lb.kompetenzen) {
+        for (const g of (k.gesellschaft || [])) { total++; if (gesW(k.id, g.bereich)) done++; }
+        for (const s of (k.sprachmpiPflicht || [])) { total++; if (sprW(k.id, s.modus)) done++; }
+      }
+    }
+    return { total, done };
+  }, [themen, entries, sid]);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-6">
@@ -177,64 +137,88 @@ function AbuAlbum({ subject, entries }) {
         <Sparkles className="w-5 h-5 text-blue-600" />
         Mein Kompetenz-Sammelalbum
       </h2>
-      <p className="text-sm text-gray-600 mb-3">
-        Für jede Kompetenz gibt es eine Sammelkarte. Sie startet grau und färbt sich, sobald du daran
-        arbeitest – deine Zirkularitätsstufe steigt von <strong>R1 Beginner</strong> über
-        <strong> R2 Advanced</strong> bis <strong>R3 Expert</strong>. Freiwillig zusätzlich geübte Kompetenzen
-        erscheinen als <span className="text-amber-600 font-semibold">Bonus</span> unter dem Lebensbezug.
+      <p className="text-sm text-gray-600 mb-1">
+        Aufbau nach Schullehrplan: pro Thema die <strong>Schlüsselkompetenzen</strong>, pro Kompetenz die
+        <strong> gesellschaftlichen Inhalte</strong> und <strong>Sprachmodi</strong>. Jede Karte trägt ihre
+        SLP-Zirkularitätsstufe (R1 Beginner, R2 Advanced, R3+ Expert).
       </p>
-
-      <div className="flex flex-wrap items-center gap-2 mb-6">
-        <span className="text-sm font-semibold text-blue-700">{erreicht} / {total} Karten freigespielt</span>
-        {countByR.map(n => (
-          <span key={n.r} className="text-xs px-2 py-1 rounded-full bg-gray-100 border">R{n.r} {n.label}: <strong>{n.count}</strong></span>
-        ))}
-        {plusTotal > 0 && (
-          <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-semibold">＋{plusTotal} Bonus</span>
-        )}
-      </div>
+      <p className="text-sm font-semibold text-blue-700 mb-6">{stats.done} / {stats.total} Karten freigespielt</p>
 
       <div className="space-y-8">
-        {data.map(({ thema, lebensbezuege }) => (
-          <div key={thema.id}>
-            {/* Thema-Kopf */}
-            <div className="flex items-center gap-2 mb-3 pb-1.5 border-b-2" style={{ borderColor: thema.color }}>
-              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: thema.color }} />
-              <h3 className="font-bold text-gray-900">Thema {thema.order}: {thema.title}</h3>
-            </div>
+        {themen.map(t => {
+          const sks = getSchluesselForThema(sid, t.order);
+          return (
+            <div key={t.id}>
+              <div className="flex items-center gap-2 mb-3 pb-1.5 border-b-2" style={{ borderColor: t.color }}>
+                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: t.color }} />
+                <h3 className="font-bold text-gray-900">Thema {t.order}: {t.title}</h3>
+              </div>
 
-            <div className="space-y-5">
-              {lebensbezuege.map(({ lb, karten, bonus }) => (
-                <div key={lb.id}>
-                  <div className="text-sm font-medium text-gray-700 mb-2 flex items-start gap-1.5">
-                    <span className="text-gray-400 shrink-0">▸</span>
-                    <span>{lb.title}</span>
+              {/* Schlüsselkompetenzen des Themas */}
+              {sks.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: uiColors.schluessel.text }}>
+                    Schlüsselkompetenzen
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                    {karten.map(k => (
-                      <Sammelkarte key={k.id} symbol={k.symbol} code={k.code} title={k.title} color={thema.color} r={k.r} plus={k.plus} />
-                    ))}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                    {sks.map(({ skId, r }) => {
+                      const sk = getSchluesselkompetenzById(skId);
+                      return (
+                        <Karte key={skId} symbol={symbolFor(skId)} code={sk?.code}
+                          label={sk?.label || skId} color={uiColors.schluessel.text} r={r} statusW={skW(skId, t.id)} big />
+                      );
+                    })}
                   </div>
-                  {bonus.length > 0 && (
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs text-amber-700 font-medium flex items-center gap-0.5">
-                        <Plus className="w-3 h-3" strokeWidth={3} /> Zusätzlich geübt:
-                      </span>
-                      {bonus.map(b => (
-                        <span key={b.code || b.label} className="text-[0.65rem] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                          {b.label}{b.code ? ` (${b.code})` : ''}{b.count > 1 ? ` ×${b.count}` : ''}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              ))}
+              )}
+
+              {/* Lebensbezüge → Kompetenzen → Bausteine */}
+              <div className="space-y-4">
+                {t.lebensbezuege.map(lb => (
+                  <div key={lb.id}>
+                    <div className="text-sm font-medium text-gray-700 mb-2 flex items-start gap-1.5">
+                      <span className="text-gray-400 shrink-0">▸</span><span>{lb.title}</span>
+                    </div>
+                    <div className="space-y-3 pl-4">
+                      {lb.kompetenzen.map(k => {
+                        const bausteine = [
+                          ...(k.gesellschaft || []).map((g, i) => {
+                            const info = getGesellschaftsinhaltById(g.bereich);
+                            return { key: `g${i}`, typ: 'gesellschaft', symbol: symbolFor(k.id + g.bereich),
+                              code: null, label: info?.label || g.bereich, color: info?.color || uiColors.gesellschaft.text,
+                              r: getRStufe(sid, 'gesellschaft', g.bereich, t.order), statusW: gesW(k.id, g.bereich) };
+                          }),
+                          ...(k.sprachmpiPflicht || []).map((s, i) => {
+                            const info = getSprachmodusById(s.modus);
+                            return { key: `s${i}`, typ: 'sprache', symbol: symbolFor(k.id + s.modus),
+                              code: info?.code, label: info?.label || s.modus, color: uiColors.sprache.text,
+                              r: getRStufe(sid, 'sprache', s.modus, t.order), statusW: sprW(k.id, s.modus) };
+                          })
+                        ];
+                        return (
+                          <div key={k.id}>
+                            <div className="text-xs text-gray-500 mb-1">
+                              <span className="font-semibold text-gray-700">{kompetenzCode(k.id)}</span> {k.text}
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                              {bausteine.map(b => (
+                                <Karte key={b.key} symbol={b.symbol} code={b.code} label={b.label}
+                                  color={b.color} r={b.r} statusW={b.statusW} />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {erreicht === 0 && (
+      {stats.done === 0 && (
         <p className="text-sm text-gray-500 mt-4 text-center">
           Noch keine Karte freigespielt – erfasse deine erste Kompetenz, um dein Album zu starten!
         </p>
@@ -244,7 +228,7 @@ function AbuAlbum({ subject, entries }) {
 }
 
 // ============================================
-// Berufskunde: Sammelalbum nach Semester → Gebiet
+// Berufskunde: Sammelalbum nach Semester → Gebiet (Niveau aus Status)
 // ============================================
 function BkAlbum({ subject, entries }) {
   const levelByKey = useMemo(() => {
@@ -258,23 +242,15 @@ function BkAlbum({ subject, entries }) {
   }, [entries]);
 
   const sections = useMemo(() => (subject.bk?.semester || []).map(sem => ({
-    id: `sem-${sem.semester}`,
-    title: `${sem.semester}. Semester`,
+    id: `sem-${sem.semester}`, title: `${sem.semester}. Semester`,
     gebiete: sem.gebiete.map(g => ({
-      name: g.name,
-      color: GEBIET_COLORS[g.name] || '#6B7280',
-      karten: g.ziele.map(z => ({
-        key: `s${sem.semester}-${z.lnr.replace(/\./g, '')}`,
-        code: z.lnr,
-        title: z.thema,
-        symbol: symbolFor(z.lnr)
-      }))
+      name: g.name, color: GEBIET_COLORS[g.name] || '#6B7280',
+      karten: g.ziele.map(z => ({ key: `s${sem.semester}-${z.lnr.replace(/\./g, '')}`, code: z.lnr, label: z.thema, symbol: symbolFor(z.lnr) }))
     }))
   })), [subject]);
 
   const alle = sections.flatMap(s => s.gebiete.flatMap(g => g.karten));
-  const erreicht = alle.filter(k => levelByKey.has(k.key)).length;
-  const countByR = R_STUFEN.map(n => ({ ...n, count: alle.filter(k => levelByKey.get(k.key) === n.r).length }));
+  const done = alle.filter(k => levelByKey.has(k.key)).length;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-6">
@@ -282,17 +258,11 @@ function BkAlbum({ subject, entries }) {
         <Sparkles className="w-5 h-5" style={{ color: subject.color }} />
         Mein Kompetenz-Sammelalbum
       </h2>
-      <p className="text-sm text-gray-600 mb-3">
-        Für jedes Leistungsziel gibt es eine Sammelkarte. Sie färbt sich bei Durchführung –
-        dein Niveau steigt von <strong>R1 Beginner</strong> über <strong>R2 Advanced</strong> bis <strong>R3 Expert</strong>.
+      <p className="text-sm text-gray-600 mb-1">
+        Für jedes Leistungsziel eine Sammelkarte – sie färbt sich bei Durchführung. Niveau nach Übungsintensität
+        (R1 Beginner, R2 Advanced, R3 Expert).
       </p>
-
-      <div className="flex flex-wrap items-center gap-2 mb-6">
-        <span className="text-sm font-semibold" style={{ color: subject.color }}>{erreicht} / {alle.length} Karten freigespielt</span>
-        {countByR.map(n => (
-          <span key={n.r} className="text-xs px-2 py-1 rounded-full bg-gray-100 border">R{n.r} {n.label}: <strong>{n.count}</strong></span>
-        ))}
-      </div>
+      <p className="text-sm font-semibold mb-6" style={{ color: subject.color }}>{done} / {alle.length} Karten freigespielt</p>
 
       <div className="space-y-8">
         {sections.map(sec => (
@@ -300,17 +270,17 @@ function BkAlbum({ subject, entries }) {
             <div className="flex items-center gap-2 mb-3 pb-1.5 border-b-2" style={{ borderColor: subject.color }}>
               <h3 className="font-bold text-gray-900">{sec.title}</h3>
             </div>
-            <div className="space-y-5">
+            <div className="space-y-4">
               {sec.gebiete.map(g => (
                 <div key={g.name}>
                   <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: g.color }} />
-                    {g.name}
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: g.color }} />{g.name}
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                    {g.karten.map(k => (
-                      <Sammelkarte key={k.key} symbol={k.symbol} code={k.code} title={k.title} color={g.color} r={levelByKey.get(k.key) || 0} />
-                    ))}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                    {g.karten.map(k => {
+                      const w = levelByKey.get(k.key) || 0;
+                      return <Karte key={k.key} symbol={k.symbol} code={k.code} label={k.label} color={g.color} r={w ? 'R' + w : null} statusW={w} />;
+                    })}
                   </div>
                 </div>
               ))}
