@@ -1,22 +1,25 @@
 import React, { useMemo } from 'react';
-import { Sticker, Lock } from 'lucide-react';
+import { Lock, Sparkles } from 'lucide-react';
+import {
+  gesellschaftsinhalte,
+  sprachmodi,
+  schluesselkompetenzen,
+  uiColors
+} from '../../data/curriculumEBA';
 
 // ============================================
-// KOMPETENZ-ALBUM (Panini-Prinzip)
-// Alle Felder sind durch den Lehrplan vordefiniert – ein Feld pro
-// Kompetenz (ABU) bzw. Leistungsziel (Berufskunde). Die Felder füllen
-// sich automatisch mit der Farbe des Themas/Gebiets, sobald daran
-// gearbeitet wurde, und zeigen das erreichte Niveau:
-//   Starter (1× kurz geübt / noch nicht verstanden)
-//   Advanced (mittel geübt / teilweise verstanden)
-//   Expert (stark geübt / verstanden)
+// ZIRKULARITÄTS-ALBUM (Panini-Prinzip)
+// Bildet die Zirkularität der Kompetenzen ab: Für jede Kompetenz aus den
+// drei Bereichen (Gesellschaftliche Inhalte, Sprachmodi, Schlüssel-
+// kompetenzen) gibt es ein festes Feld. Jedes Feld hat die Grundfarbe
+// seiner Hauptkompetenz; die R-Stufe (Abstufung) zeigt das Niveau:
+//   R1 = Beginner · R2 = Advanced · R3 = Expert
+// Freiwillige Vertiefung (Wiederholung / zusätzlich geübte Sprachmodi)
+// bringt Plus-Auszeichnungen (+1 … +3).
+//
+// Für die Berufskunde (kind === 'bk') gibt es keine Zirkularität – dort
+// zeigt das Album ein Leistungsziel-Feld pro Semester/Gebiet.
 // ============================================
-
-export const NIVEAUS = [
-  { id: 'starter', label: 'Starter', weight: 1, badge: '🥉', ring: '#B45309' },
-  { id: 'advanced', label: 'Advanced', weight: 2, badge: '🥈', ring: '#64748B' },
-  { id: 'expert', label: 'Expert', weight: 3, badge: '🥇', ring: '#D97706' }
-];
 
 const STATUS_WEIGHT = {
   // Üben-Skala (Sprachmodi, Schlüsselkompetenzen, BK)
@@ -24,6 +27,13 @@ const STATUS_WEIGHT = {
   // Verständnis-Skala (Gesellschaftsinhalte)
   nichtVerstanden: 1, teilweiseVerstanden: 2, verstanden: 3
 };
+
+export const R_STUFEN = [
+  { r: 1, label: 'Beginner' },
+  { r: 2, label: 'Advanced' },
+  { r: 3, label: 'Expert' }
+];
+const rLabel = (r) => R_STUFEN.find(x => x.r === r)?.label || '';
 
 const GEBIET_COLORS = {
   'Betriebliche Prozesse': '#0EA5E9',
@@ -35,34 +45,59 @@ const GEBIET_COLORS = {
   'Stoffkunde': '#14B8A6'
 };
 
-const niveauForWeight = (w) => NIVEAUS.find(n => n.weight === Math.min(3, Math.max(1, w))) || NIVEAUS[0];
+// Farbabstufung eines Feldes nach R-Stufe (0 = noch offen)
+function feldStyle(color, r) {
+  if (!r) return { style: {}, cls: 'border-2 border-dashed border-gray-300 bg-white/70 text-gray-400' };
+  if (r === 1) return { style: { backgroundColor: color + '26', borderColor: color + '77', color }, cls: 'border-2' };
+  if (r === 2) return { style: { backgroundColor: color + 'B3', borderColor: color, color: '#fff' }, cls: 'border-2' };
+  return { style: { backgroundColor: color, borderColor: color, color: '#fff' }, cls: 'border-2 shadow-md' };
+}
 
-// Kürzel für die Feldbeschriftung: k1-2-3 → «1.2.3»
-const kompetenzKurz = (id) => (id || '').replace(/^k/, '').split('-').join('.');
+// Aggregiert die Einträge, die auf ein Feld passen
+function aggregate(entries, matchFn) {
+  const ms = entries.filter(matchFn);
+  let w = 0, opt = 0;
+  for (const e of ms) {
+    w = Math.max(w, STATUS_WEIGHT[e.status] || 1);
+    if (e.isOptional) opt++;
+  }
+  const pflicht = ms.length - opt;
+  const plus = Math.min(3, opt + Math.max(0, pflicht - 1));
+  return { r: w, plus, count: ms.length };
+}
 
 // ============================================
 // Einzelnes Album-Feld
 // ============================================
-function AlbumFeld({ code, title, color, niveau }) {
-  const filled = !!niveau;
+function AlbumFeld({ code, label, color, r, plus = 0 }) {
+  const { style, cls } = feldStyle(color, r);
+  const filled = !!r;
+  const titleParts = [label];
+  if (filled) titleParts.push(`R${r} · ${rLabel(r)}`);
+  else titleParts.push('noch offen');
+  if (plus > 0) titleParts.push(`+${plus} freiwillige Vertiefung`);
+
   return (
     <div
-      className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 relative p-1 transition ${
-        filled ? 'shadow-md text-white' : 'border-2 border-dashed border-gray-300 bg-white/70'
-      }`}
-      style={filled ? { backgroundColor: color, border: `2px solid ${color}` } : {}}
-      title={filled ? `${code} · ${title} – Niveau ${niveau.label}` : `${code} · ${title} – noch offen`}
+      className={`relative aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 p-1 text-center overflow-hidden ${cls}`}
+      style={style}
+      title={titleParts.join(' – ')}
     >
+      {plus > 0 && (
+        <span className="absolute top-0.5 right-0.5 bg-amber-400 text-amber-900 text-[0.58rem] font-extrabold rounded-full px-1 leading-tight shadow border border-white">
+          +{plus}
+        </span>
+      )}
       {filled ? (
         <>
-          <span className="text-xl leading-none drop-shadow">{niveau.badge}</span>
-          <span className="text-[0.65rem] font-bold leading-none">{code}</span>
-          <span className="text-[0.55rem] font-medium leading-none opacity-90">{niveau.label}</span>
+          <span className="text-sm font-extrabold leading-none">R{r}</span>
+          <span className="text-[0.6rem] font-semibold leading-tight line-clamp-2">{code || label}</span>
+          <span className="text-[0.5rem] leading-none opacity-90">{rLabel(r)}</span>
         </>
       ) : (
         <>
           <Lock className="w-3.5 h-3.5 text-gray-300" />
-          <span className="text-[0.65rem] font-semibold text-gray-400 leading-none">{code}</span>
+          <span className="text-[0.58rem] font-medium text-gray-400 leading-tight line-clamp-2">{code || label}</span>
         </>
       )}
     </div>
@@ -70,117 +105,96 @@ function AlbumFeld({ code, title, color, niveau }) {
 }
 
 // ============================================
-// Album-Ansicht
-// subject: Fach aus der Registry · entries: Einträge der/des Lernenden
+// ABU: Zirkularitäts-Album (3 Bereiche)
 // ============================================
-export function AlbumView({ subject, entries = [] }) {
-  // Höchstes erreichtes Niveau pro Kompetenz/Leistungsziel
-  const levelByKey = useMemo(() => {
-    const map = new Map();
-    for (const e of entries) {
-      const key = subject.kind === 'bk' ? e.zielId : e.kompetenzId;
-      if (!key) continue;
-      const w = STATUS_WEIGHT[e.status] || 1;
-      if (!map.has(key) || map.get(key) < w) map.set(key, w);
+function ZirkAlbum({ entries }) {
+  const sections = useMemo(() => [
+    {
+      key: 'gesellschaft',
+      title: 'Gesellschaftliche Inhalte',
+      base: uiColors.gesellschaft.text,
+      felder: gesellschaftsinhalte.map(g => ({
+        id: g.id, label: g.label, code: null, color: g.color,
+        match: e => e.type === 'gesellschaft' && e.bereich === g.id
+      }))
+    },
+    {
+      key: 'sprache',
+      title: 'Sprachmodi',
+      base: uiColors.sprache.text,
+      felder: sprachmodi.map(s => ({
+        id: s.id, label: `${s.label} (${s.code})`, code: s.label, color: uiColors.sprache.text,
+        match: e => e.type === 'sprachmodus' && e.modus === s.id
+      }))
+    },
+    {
+      key: 'schluessel',
+      title: 'Schlüsselkompetenzen',
+      base: uiColors.schluessel.text,
+      felder: schluesselkompetenzen.map(sk => ({
+        id: sk.id, label: `${sk.code}: ${sk.label}`, code: sk.code, color: uiColors.schluessel.text,
+        match: e => e.type === 'schluesselkompetenz' && e.schluesselkompetenzId === sk.id
+      }))
     }
-    return map;
-  }, [entries, subject.kind]);
+  ], []);
 
-  // Vordefinierte Felder aus dem Lehrplan aufbauen
-  const sections = useMemo(() => {
-    if (subject.kind === 'bk') {
-      return (subject.bk?.semester || []).map(sem => ({
-        id: `sem-${sem.semester}`,
-        title: `${sem.semester}. Semester`,
-        color: '#475569',
-        felder: sem.gebiete.flatMap(g =>
-          g.ziele.map(z => ({
-            key: `s${sem.semester}-${z.lnr.replace(/\./g, '')}`,
-            code: z.lnr,
-            title: `${g.name} · ${z.thema}`,
-            color: GEBIET_COLORS[g.name] || '#6B7280'
-          }))
-        )
-      }));
-    }
-    return (subject.curriculum?.themen || []).map(t => ({
-      id: t.id,
-      title: `Thema ${t.order}: ${t.title}`,
-      color: t.color,
-      felder: t.lebensbezuege.flatMap(lb =>
-        lb.kompetenzen.map(k => ({
-          key: k.id,
-          code: kompetenzKurz(k.id),
-          title: k.text,
-          color: t.color
-        }))
-      )
-    })).filter(sec => sec.felder.length > 0);
-  }, [subject]);
+  // Aggregate pro Feld berechnen
+  const computed = useMemo(() => sections.map(sec => ({
+    ...sec,
+    felder: sec.felder.map(f => ({ ...f, ...aggregate(entries, f.match) }))
+  })), [sections, entries]);
 
-  const totalFelder = sections.reduce((acc, sec) => acc + sec.felder.length, 0);
-  const gefuellt = sections.reduce(
-    (acc, sec) => acc + sec.felder.filter(f => levelByKey.has(f.key)).length, 0
-  );
-  const countByNiveau = NIVEAUS.map(n => ({
-    ...n,
-    count: sections.reduce(
-      (acc, sec) => acc + sec.felder.filter(f => levelByKey.get(f.key) === n.weight).length, 0
-    )
-  }));
+  const alleFelder = computed.flatMap(s => s.felder);
+  const total = alleFelder.length;
+  const erreicht = alleFelder.filter(f => f.r > 0).length;
+  const plusTotal = alleFelder.reduce((acc, f) => acc + f.plus, 0);
+  const countByR = R_STUFEN.map(n => ({ ...n, count: alleFelder.filter(f => f.r === n.r).length }));
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-6">
       <h2 className="text-lg font-bold mb-1 flex items-center gap-2">
-        <Sticker className="w-5 h-5" style={{ color: subject.color }} />
-        Mein Kompetenz-Album
+        <Sparkles className="w-5 h-5 text-blue-600" />
+        Mein Zirkularitäts-Album
       </h2>
       <p className="text-sm text-gray-600 mb-3">
-        Jede Kompetenz hat ihr festes Feld in der Farbe ihres {subject.kind === 'bk' ? 'Gebiets' : 'Themas'}.
-        Sobald du daran arbeitest, füllt sich das Feld – dein Niveau steigt von Starter über Advanced bis Expert.
+        Jede Kompetenz hat ihr festes Feld in der Grundfarbe ihres Bereichs. Je nach deinem Niveau
+        färbt sich das Feld dunkler – von <strong>R1 Beginner</strong> über <strong>R2 Advanced</strong> bis <strong>R3 Expert</strong>.
+        Für freiwillige Vertiefung (Wiederholung oder zusätzlich geübte Modi) gibt es <span className="text-amber-600 font-semibold">＋-Auszeichnungen</span>.
       </p>
 
-      {/* Fortschritt + Legende */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <span className="text-sm font-semibold" style={{ color: subject.color }}>
-          {gefuellt} / {totalFelder} Feldern gefüllt
-        </span>
-        <div className="flex flex-wrap gap-2">
-          {countByNiveau.map(n => (
-            <span key={n.id} className="text-xs px-2 py-1 rounded-full bg-gray-100 border flex items-center gap-1">
-              {n.badge} {n.label}: <strong>{n.count}</strong>
-            </span>
-          ))}
-        </div>
+      {/* Fortschritt + Niveau-Übersicht */}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <span className="text-sm font-semibold text-blue-700">{erreicht} / {total} Feldern erreicht</span>
+        {countByR.map(n => (
+          <span key={n.r} className="text-xs px-2 py-1 rounded-full bg-gray-100 border">
+            R{n.r} {n.label}: <strong>{n.count}</strong>
+          </span>
+        ))}
+        {plusTotal > 0 && (
+          <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
+            ＋{plusTotal} freiwillig
+          </span>
+        )}
       </div>
 
       <div className="space-y-6">
-        {sections.map(sec => {
-          const secFilled = sec.felder.filter(f => levelByKey.has(f.key)).length;
+        {computed.map(sec => {
+          const secErreicht = sec.felder.filter(f => f.r > 0).length;
           return (
-            <div key={sec.id}>
+            <div key={sec.key}>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sec.color }} />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sec.base }} />
                 <h3 className="font-semibold text-sm text-gray-800">{sec.title}</h3>
-                <span className="text-xs text-gray-400">{secFilled}/{sec.felder.length}</span>
+                <span className="text-xs text-gray-400">{secErreicht}/{sec.felder.length}</span>
               </div>
               <div
                 className="rounded-xl border-2 border-dashed p-3"
-                style={{ borderColor: sec.color + '40', backgroundColor: sec.color + '08' }}
+                style={{ borderColor: sec.base + '40', backgroundColor: sec.base + '08' }}
               >
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2.5">
-                  {sec.felder.map(f => {
-                    const w = levelByKey.get(f.key);
-                    return (
-                      <AlbumFeld
-                        key={f.key}
-                        code={f.code}
-                        title={f.title}
-                        color={f.color}
-                        niveau={w ? niveauForWeight(w) : null}
-                      />
-                    );
-                  })}
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
+                  {sec.felder.map(f => (
+                    <AlbumFeld key={f.id} code={f.code} label={f.label} color={f.color} r={f.r} plus={f.plus} />
+                  ))}
                 </div>
               </div>
             </div>
@@ -188,11 +202,100 @@ export function AlbumView({ subject, entries = [] }) {
         })}
       </div>
 
-      {gefuellt === 0 && (
+      {erreicht === 0 && (
         <p className="text-sm text-gray-500 mt-4 text-center">
-          Noch keine Felder gefüllt – erfasse deine erste Kompetenz, um das Album zu starten!
+          Noch keine Felder erreicht – erfasse deine erste Kompetenz, um dein Album zu starten!
         </p>
       )}
     </div>
   );
+}
+
+// ============================================
+// Berufskunde: Leistungsziel-Album (Semester/Gebiet)
+// ============================================
+function BkAlbum({ subject, entries }) {
+  const levelByKey = useMemo(() => {
+    const map = new Map();
+    for (const e of entries) {
+      if (!e.zielId) continue;
+      const w = STATUS_WEIGHT[e.status] || 1;
+      if (!map.has(e.zielId) || map.get(e.zielId) < w) map.set(e.zielId, w);
+    }
+    return map;
+  }, [entries]);
+
+  const sections = useMemo(() => (subject.bk?.semester || []).map(sem => ({
+    id: `sem-${sem.semester}`,
+    title: `${sem.semester}. Semester`,
+    felder: sem.gebiete.flatMap(g =>
+      g.ziele.map(z => ({
+        key: `s${sem.semester}-${z.lnr.replace(/\./g, '')}`,
+        code: z.lnr,
+        label: `${g.name} · ${z.thema}`,
+        color: GEBIET_COLORS[g.name] || '#6B7280'
+      }))
+    )
+  })), [subject]);
+
+  const alle = sections.flatMap(s => s.felder);
+  const erreicht = alle.filter(f => levelByKey.has(f.key)).length;
+  const countByR = R_STUFEN.map(n => ({
+    ...n, count: alle.filter(f => levelByKey.get(f.key) === n.r).length
+  }));
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border p-6">
+      <h2 className="text-lg font-bold mb-1 flex items-center gap-2">
+        <Sparkles className="w-5 h-5" style={{ color: subject.color }} />
+        Mein Kompetenz-Album
+      </h2>
+      <p className="text-sm text-gray-600 mb-3">
+        Jedes Leistungsziel hat sein Feld in der Farbe seines Gebiets. Dein Niveau steigt von
+        <strong> R1 Beginner</strong> über <strong>R2 Advanced</strong> bis <strong>R3 Expert</strong>.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <span className="text-sm font-semibold" style={{ color: subject.color }}>{erreicht} / {alle.length} Feldern erreicht</span>
+        {countByR.map(n => (
+          <span key={n.r} className="text-xs px-2 py-1 rounded-full bg-gray-100 border">
+            R{n.r} {n.label}: <strong>{n.count}</strong>
+          </span>
+        ))}
+      </div>
+
+      <div className="space-y-6">
+        {sections.map(sec => {
+          const secErreicht = sec.felder.filter(f => levelByKey.has(f.key)).length;
+          return (
+            <div key={sec.id}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: subject.color }} />
+                <h3 className="font-semibold text-sm text-gray-800">{sec.title}</h3>
+                <span className="text-xs text-gray-400">{secErreicht}/{sec.felder.length}</span>
+              </div>
+              <div
+                className="rounded-xl border-2 border-dashed p-3"
+                style={{ borderColor: subject.color + '40', backgroundColor: subject.color + '08' }}
+              >
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
+                  {sec.felder.map(f => (
+                    <AlbumFeld key={f.key} code={f.code} label={f.label} color={f.color} r={levelByKey.get(f.key) || 0} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Öffentliche Album-Komponente
+// ============================================
+export function AlbumView({ subject, entries = [] }) {
+  if (subject.kind === 'bk') return <BkAlbum subject={subject} entries={entries} />;
+  return <ZirkAlbum entries={entries} />;
 }
