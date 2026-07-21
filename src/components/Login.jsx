@@ -80,7 +80,7 @@ const Login = () => {
               alt="ABU Logo"
               className="w-32 h-32 mx-auto mb-4 object-contain"
             />
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">stud-i-agency-chek</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">stud-i-agency-check</h1>
             <p className="text-gray-600 text-sm">
               Digitale Lernplattform für die berufliche Grundbildung – Allgemeinbildung und Berufskunde, EBA und EFZ
             </p>
@@ -121,13 +121,36 @@ const Login = () => {
                 <Settings className="w-5 h-5" />
                 <span>Admin</span>
               </button>
+
+              {/* Demo-Zugang */}
+              <div className="pt-4 border-t">
+                <p className="text-xs text-gray-500 text-center mb-3">Plattform ohne Anmeldung ausprobieren:</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleRoleSelection('demo-learner')}
+                    className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 py-2.5 px-3 rounded-xl text-sm font-medium transition border border-emerald-200"
+                  >
+                    Demo als Lernende:r
+                  </button>
+                  <button
+                    onClick={() => handleRoleSelection('demo-teacher')}
+                    className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 py-2.5 px-3 rounded-xl text-sm font-medium transition border border-emerald-200"
+                  >
+                    Demo als Lehrperson
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             // Login-Formular oder Code-Login
             <>
-              {['learner','external'].includes(selectedRole) ? (
-                // Lernende: NUR Code-Login
-                <CodeLogin role={selectedRole} onBack={handleBack} />
+              {['learner','external','demo-learner','demo-teacher'].includes(selectedRole) ? (
+                // Lernende & Demo: NUR Code-Login
+                <CodeLogin
+                  role={selectedRole === 'external' ? 'external' : 'learner'}
+                  onBack={handleBack}
+                  initialCode={selectedRole === 'demo-learner' ? 'LERNEN' : selectedRole === 'demo-teacher' ? 'SCHULE' : ''}
+                />
               ) : (
                 // Trainer/Admin: Normal Login
                 <>
@@ -202,7 +225,7 @@ const Login = () => {
 
         {/* Footer */}
         <p className="text-center text-gray-500 text-sm mt-8">
-          © 2026 stud-i-agency-chek · Digitale Lernplattform
+          © 2026 stud-i-agency-check · Digitale Lernplattform
         </p>
       </div>
     </div>

@@ -8,6 +8,7 @@ import {
   doc,
   setDoc,
   updateDoc,
+  arrayUnion,
   Timestamp
 } from 'firebase/firestore';
 import {
@@ -21,8 +22,8 @@ import { ArrowLeft } from 'lucide-react';
 
 const CODE_EMAIL_DOMAIN = 'studiagency-check.ch';
 
-export default function CodeLogin({ role, onBack }) {
-  const [code, setCode] = useState('');
+export default function CodeLogin({ role, onBack, initialCode = '' }) {
+  const [code, setCode] = useState(initialCode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -54,6 +55,8 @@ export default function CodeLogin({ role, onBack }) {
 
       const codeDoc = codeSnapshot.docs[0];
       const codeData = codeDoc.data();
+      const isTeacherCode = codeData.role === 'teacher';
+      const target = isExternal ? '/external' : (isTeacherCode ? '/teacher' : '/learner');
 
       // Optional: blocke "used" nicht, weil Codes als dauerhaftes Passwort gedacht sind.
       // Wenn ihr Externe zeitlich begrenzen wollt, könnt ihr expiresAt prüfen.
@@ -66,7 +69,7 @@ export default function CodeLogin({ role, onBack }) {
       // 2) Login versuchen, sonst erstellen
       try {
         await signInWithEmailAndPassword(auth, email, password);
-        window.location.href = isExternal ? '/external' : '/learner';
+        window.location.href = target;
         return;
       } catch (loginError) {
         if (loginError.code !== 'auth/user-not-found' && loginError.code !== 'auth/invalid-credential') {
@@ -77,11 +80,34 @@ export default function CodeLogin({ role, onBack }) {
         const user = userCredential.user;
 
         // DisplayName
-        const displayName = isExternal ? (codeData.displayName || 'Externer Zugriff') : (codeData.name || 'Lernende:r');
+        const displayName = isExternal ? (codeData.displayName || 'Externer Zugriff') : (codeData.name || (isTeacherCode ? 'Demo-Lehrperson' : 'Lernende:r'));
         await updateProfile(user, { displayName });
 
         // 3) User-Dokument
-        if (isExternal) {
+        if (isTeacherCode) {
+          await setDoc(doc(db, 'users', user.uid), {
+            role: 'teacher',
+            name: displayName,
+            displayName,
+            email,
+            code: codeUpper,
+            isDemo: codeData.isDemo || false,
+            createdAt: Timestamp.now(),
+            firstLogin: Timestamp.now()
+          });
+          // Demo-Lehrperson der hinterlegten Klasse als Co-Lehrperson hinzufügen
+          if (codeData.classId) {
+            await updateDoc(doc(db, 'classes', codeData.classId), {
+              teacherIds: arrayUnion(user.uid),
+              [`teacherNames.${user.uid}`]: displayName
+            });
+          }
+          await updateDoc(doc(db, 'learnerCodes', codeDoc.id), {
+            used: true,
+            userId: user.uid,
+            lastUsedAt: Timestamp.now()
+          });
+        } else if (isExternal) {
           await setDoc(doc(db, 'users', user.uid), {
             role: 'external',
             displayName,
@@ -112,7 +138,7 @@ export default function CodeLogin({ role, onBack }) {
           });
         }
 
-        window.location.href = isExternal ? '/external' : '/learner';
+        window.location.href = target;
       }
     } catch (err) {
       console.error(err);

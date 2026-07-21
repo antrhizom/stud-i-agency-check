@@ -233,6 +233,7 @@ export default function TeacherDashboard() {
           (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
         );
         for (const code of sortedCodes) {
+          if (code.role === 'teacher') continue; // Demo-Lehrpersonen-Codes sind keine Lernenden
           if (code.userId && userIdSet.has(code.userId)) continue;
           const dedupeKey = `${code.classId}__${code.name}`;
           if (seenCodeKey.has(dedupeKey)) continue;
@@ -558,7 +559,7 @@ export default function TeacherDashboard() {
           <div className="flex items-center gap-3">
             <img src="/LogoABU_DNA.png" alt="Logo" className="h-10 w-10 object-contain" />
             <div>
-              <h1 className="text-xl font-bold text-gray-900">stud-i-agency-chek</h1>
+              <h1 className="text-xl font-bold text-gray-900">stud-i-agency-check</h1>
               <p className="text-sm text-gray-600">Lehrperson · {userData?.displayName || userData?.name || ''}</p>
             </div>
           </div>
