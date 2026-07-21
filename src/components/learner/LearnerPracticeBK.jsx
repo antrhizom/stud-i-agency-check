@@ -27,6 +27,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import DemoBanner from '../DemoBanner';
+import { StickerPickerModal, AlbumView } from './StickerAlbum';
 
 // Beispiel-Lernende:r, deren BK-Einträge im Demo-Modus angezeigt werden
 const DEMO_LEARNER_ID = 'demo-lernende-2';
@@ -246,6 +247,7 @@ function ZielCard({ ziel, semester, entries, onSave }) {
 export default function LearnerPracticeBK({ subject }) {
   const { signOut, userData, currentUser } = useAuth();
   const isDemo = userData?.isDemo === true;
+  const effectiveLearnerId = isDemo ? DEMO_LEARNER_ID : currentUser?.uid;
   const bk = subject.bk;
   const [activeTab, setActiveTab] = useState('ueben'); // ueben | eintraege | fortschritt
   const [activeSemester, setActiveSemester] = useState(1);
@@ -255,6 +257,10 @@ export default function LearnerPracticeBK({ subject }) {
   const [replyEntry, setReplyEntry] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [savingReply, setSavingReply] = useState(false);
+
+  // Abziehbilder-Album
+  const [stickers, setStickers] = useState([]);
+  const [pickerSource, setPickerSource] = useState(null);
 
   const loadEntries = async () => {
     if (!currentUser) return;
@@ -285,36 +291,83 @@ export default function LearnerPracticeBK({ subject }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, subject.id]);
 
+  // Album-Sticker laden (fachübergreifend pro Lernende:r)
+  useEffect(() => {
+    if (!effectiveLearnerId) return;
+    const load = async () => {
+      const snap = await getDocs(query(collection(db, 'albumStickers'), where('learnerId', '==', effectiveLearnerId)));
+      setStickers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    };
+    load().catch(console.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveLearnerId]);
+
+  // Leistungsziel stark geübt? -> Abziehbild anbieten (einmal pro Leistungsziel)
+  const maybeOfferSticker = (data) => {
+    if (data.status !== 'stark') return;
+    const sourceId = `${subject.id}:${data.zielId}`;
+    if (stickers.some(st => st.sourceId === sourceId)) return;
+    setPickerSource({ sourceId, sourceText: `${data.lnr} ${data.thema}` });
+  };
+
+  const pickSticker = async (st) => {
+    if (!pickerSource) return;
+    const stickerDoc = {
+      learnerId: effectiveLearnerId,
+      stickerId: st.id,
+      subjectId: subject.id,
+      sourceId: pickerSource.sourceId,
+      sourceText: pickerSource.sourceText || null,
+      createdAt: Timestamp.now()
+    };
+    setPickerSource(null);
+    if (isDemo) {
+      setStickers(prev => [...prev, { id: `demo-local-${Date.now()}`, ...stickerDoc }]);
+      return;
+    }
+    try {
+      const ref = await addDoc(collection(db, 'albumStickers'), stickerDoc);
+      setStickers(prev => [...prev, { id: ref.id, ...stickerDoc }]);
+    } catch (err) {
+      alert('Fehler: ' + (err?.message || String(err)));
+    }
+  };
+
   const saveEntry = async (data) => {
     if (!currentUser) return;
-    if (isDemo) { alert('Demo-Modus: Neue Einträge werden nicht gespeichert. Probiere die Erfassung gerne aus – im echten Konto landet sie im Lernjournal.'); return; }
     try {
-      const docRef = await addDoc(collection(db, 'practiceEntriesBK'), {
-        learnerId: currentUser.uid,
+      const payload = {
+        learnerId: effectiveLearnerId,
         teacherId: userData?.teacherId || null,
         classId: userData?.classId || null,
         subjectId: subject.id,
         ...data,
         createdAt: Timestamp.now()
-      });
-      setEntries(prev => [{
-        id: docRef.id,
-        learnerId: currentUser.uid,
-        classId: userData?.classId || null,
-        subjectId: subject.id,
-        ...data,
-        createdAt: new Date()
-      }, ...prev]);
+      };
+      let newId;
+      if (isDemo) {
+        // Demo: nur lokal - nichts wird dauerhaft gespeichert
+        newId = `demo-local-${Date.now()}`;
+      } else {
+        const docRef = await addDoc(collection(db, 'practiceEntriesBK'), payload);
+        newId = docRef.id;
+      }
+      setEntries(prev => [{ ...payload, id: newId, createdAt: new Date() }, ...prev]);
       setSaveToast(true);
       setTimeout(() => setSaveToast(false), 2500);
+      maybeOfferSticker(data);
     } catch (err) {
       alert('Fehler: ' + (err?.message || String(err)));
     }
   };
 
   const handleDelete = async (id) => {
-    if (isDemo) { alert('Demo-Modus: Es werden keine Daten gespeichert oder gelöscht.'); return; }
     if (!confirm('Eintrag wirklich löschen?')) return;
+    if (isDemo) {
+      // Demo: nur lokal entfernen (nach Neuladen wieder da)
+      setEntries(prev => prev.filter(e => e.id !== id));
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'practiceEntriesBK', id));
       setEntries(prev => prev.filter(e => e.id !== id));
@@ -325,7 +378,11 @@ export default function LearnerPracticeBK({ subject }) {
 
   const saveReply = async () => {
     if (!replyEntry) return;
-    if (isDemo) { alert('Demo-Modus: Antworten werden nicht gespeichert.'); setReplyEntry(null); setReplyText(''); return; }
+    if (isDemo) {
+      setEntries(prev => prev.map(e => e.id === replyEntry.id ? { ...e, learnerReply: replyText.trim() || null } : e));
+      setReplyEntry(null); setReplyText('');
+      return;
+    }
     setSavingReply(true);
     try {
       await updateDoc(doc(db, 'practiceEntriesBK', replyEntry.id), {
@@ -442,6 +499,13 @@ export default function LearnerPracticeBK({ subject }) {
           >
             <BarChart3 className="w-4 h-4" />
             Fortschritt
+          </button>
+          <button
+            onClick={() => setActiveTab('album')}
+            className={`px-4 py-2 rounded-lg border flex items-center gap-2 transition-colors ${activeTab === 'album' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'}`}
+          >
+            <CheckCircle className="w-4 h-4" />
+            Album ({stickers.length})
           </button>
         </div>
 
@@ -590,7 +654,21 @@ export default function LearnerPracticeBK({ subject }) {
             </div>
           </div>
         )}
+
+        {/* Album Tab */}
+        {activeTab === 'album' && (
+          <AlbumView stickers={stickers} accentColor={subject.color} />
+        )}
       </div>
+
+      {/* Abziehbild-Auswahl nach erreichtem Leistungsziel */}
+      <StickerPickerModal
+        open={!!pickerSource}
+        ownedStickerIds={stickers.map(st => st.stickerId)}
+        sourceText={pickerSource?.sourceText}
+        onPick={pickSticker}
+        onClose={() => setPickerSource(null)}
+      />
     </div>
   );
 }

@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import ZirkularitaetDashboard from './ZirkularitaetDashboard';
 import DemoBanner from '../DemoBanner';
+import { StickerPickerModal, AlbumView } from './StickerAlbum';
 
 // Beispiel-Lernende:r, deren Einträge im Demo-Modus angezeigt werden
 const DEMO_LEARNER_ID = 'demo-lernende-1';
@@ -927,6 +928,7 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
   const { signOut, userData, currentUser } = useAuth();
   const isDemo = userData?.isDemo === true;
   const subject = subjectProp || getSubjectById(DEFAULT_SUBJECT_ID);
+  const effectiveLearnerId = isDemo ? DEMO_LEARNER_ID : currentUser?.uid;
   const themen = subject.curriculum.themen;
   const lehrjahre = Array.from(
     new Set(themen.map(t => t.lehrjahr))
@@ -944,6 +946,10 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
 
   // Filter für "Meine Einträge"
   const [entryFilter, setEntryFilter] = useState(null); // null | 'gesellschaft' | 'sprachmodus' | 'schluesselkompetenz' | 'transversal' | 'comments'
+
+  // Abziehbilder-Album
+  const [stickers, setStickers] = useState([]);
+  const [pickerSource, setPickerSource] = useState(null); // { sourceId, sourceText }
 
   // Load entries - ohne orderBy um Index-Fehler zu vermeiden
   const loadEntries = async () => {
@@ -974,8 +980,12 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
 
   // Delete entry
   const handleDeleteEntry = async (entryId) => {
-    if (isDemo) { alert('Demo-Modus: Es werden keine Daten gespeichert oder gelöscht.'); return; }
     if (!confirm('Eintrag wirklich löschen?')) return;
+    if (isDemo) {
+      // Demo: nur lokal entfernen (nach Neuladen wieder da)
+      setEntries(prev => prev.filter(e => e.id !== entryId));
+      return;
+    }
     setLoading(true);
     try {
       await deleteDoc(doc(db, 'practiceEntriesEBA', entryId));
@@ -992,32 +1002,76 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, subject.id]);
 
+  // Album-Sticker laden (fachübergreifend pro Lernende:r)
+  useEffect(() => {
+    if (!effectiveLearnerId) return;
+    const load = async () => {
+      const snap = await getDocs(query(collection(db, 'albumStickers'), where('learnerId', '==', effectiveLearnerId)));
+      setStickers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    };
+    load().catch(console.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveLearnerId]);
+
+  // Kompetenz erreicht? -> Abziehbild zur Auswahl anbieten (einmal pro Kompetenz)
+  const maybeOfferSticker = (data) => {
+    const topStatus = data.status === 'stark' || data.status === 'verstanden';
+    if (!topStatus) return;
+    const sourceKey = data.kompetenzId || (data.transversalId ? `transversal-${data.transversalId}` : null);
+    if (!sourceKey) return;
+    const sourceId = `${subject.id}:${sourceKey}`;
+    if (stickers.some(st => st.sourceId === sourceId)) return;
+    setPickerSource({ sourceId, sourceText: data.inhalt || 'Kompetenz erreicht' });
+  };
+
+  const pickSticker = async (st) => {
+    if (!pickerSource) return;
+    const stickerDoc = {
+      learnerId: effectiveLearnerId,
+      stickerId: st.id,
+      subjectId: subject.id,
+      sourceId: pickerSource.sourceId,
+      sourceText: pickerSource.sourceText || null,
+      createdAt: Timestamp.now()
+    };
+    setPickerSource(null);
+    if (isDemo) {
+      setStickers(prev => [...prev, { id: `demo-local-${Date.now()}`, ...stickerDoc }]);
+      return;
+    }
+    try {
+      const ref = await addDoc(collection(db, 'albumStickers'), stickerDoc);
+      setStickers(prev => [...prev, { id: ref.id, ...stickerDoc }]);
+    } catch (err) {
+      alert('Fehler: ' + (err?.message || String(err)));
+    }
+  };
+
   // Generischer Save-Handler – kein setLoading(true), damit ThemaCards nicht unmounten
   const saveEntry = async (data) => {
     if (!currentUser) return;
-    if (isDemo) { alert('Demo-Modus: Neue Einträge werden nicht gespeichert. Probiere die Erfassung gerne aus – im echten Konto landet sie im Lernjournal.'); return; }
     try {
-      const docRef = await addDoc(collection(db, 'practiceEntriesEBA'), {
-        learnerId: currentUser.uid,
+      const payload = {
+        learnerId: effectiveLearnerId,
         teacherId: userData?.teacherId || null,
         classId: userData?.classId || null,
         subjectId: subject.id,
         ...data,
         createdAt: Timestamp.now()
-      });
-      // Optimistisch hinzufügen: kein Re-Fetch, keine Akkordeon-Reset
-      const newEntry = {
-        id: docRef.id,
-        learnerId: currentUser.uid,
-        teacherId: userData?.teacherId || null,
-        classId: userData?.classId || null,
-        subjectId: subject.id,
-        ...data,
-        createdAt: new Date()
       };
-      setEntries(prev => [newEntry, ...prev]);
+      let newId;
+      if (isDemo) {
+        // Demo: nur lokal - nichts wird dauerhaft gespeichert
+        newId = `demo-local-${Date.now()}`;
+      } else {
+        const docRef = await addDoc(collection(db, 'practiceEntriesEBA'), payload);
+        newId = docRef.id;
+      }
+      // Optimistisch hinzufügen: kein Re-Fetch, keine Akkordeon-Reset
+      setEntries(prev => [{ ...payload, id: newId, createdAt: new Date() }, ...prev]);
       setSaveToast(true);
       setTimeout(() => setSaveToast(false), 2500);
+      maybeOfferSticker(data);
     } catch (err) {
       alert('Fehler: ' + (err?.message || String(err)));
     }
@@ -1026,7 +1080,11 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
   // Antwort der Lernenden auf Lehrpersonen-Kommentar
   const saveReply = async () => {
     if (!replyEntry) return;
-    if (isDemo) { alert('Demo-Modus: Antworten werden nicht gespeichert.'); setReplyEntry(null); setReplyText(''); return; }
+    if (isDemo) {
+      setEntries(prev => prev.map(e => e.id === replyEntry.id ? { ...e, learnerReply: replyText.trim() || null } : e));
+      setReplyEntry(null); setReplyText('');
+      return;
+    }
     setSavingReply(true);
     try {
       await updateDoc(doc(db, 'practiceEntriesEBA', replyEntry.id), {
@@ -1169,6 +1227,17 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
           >
             <BarChart3 className="w-4 h-4" />
             Zirkularität
+          </button>
+          <button
+            onClick={() => setActiveTab('album')}
+            className={`px-4 py-2 rounded-lg border flex items-center gap-2 transition-colors ${
+              activeTab === 'album'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white hover:bg-gray-50'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            Album ({stickers.length})
           </button>
         </div>
 
@@ -1329,7 +1398,21 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
         {activeTab === 'zirkularitaet' && (
           <ZirkularitaetDashboard entries={entries} themen={themen} subjectLabel={subject.label} />
         )}
+
+        {/* Album Tab */}
+        {activeTab === 'album' && (
+          <AlbumView stickers={stickers} accentColor={subject.color} />
+        )}
       </div>
+
+      {/* Abziehbild-Auswahl nach erreichter Kompetenz */}
+      <StickerPickerModal
+        open={!!pickerSource}
+        ownedStickerIds={stickers.map(st => st.stickerId)}
+        sourceText={pickerSource?.sourceText}
+        onPick={pickSticker}
+        onClose={() => setPickerSource(null)}
+      />
     </div>
   );
 }

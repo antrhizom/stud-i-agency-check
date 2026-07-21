@@ -152,13 +152,6 @@ export default function TeacherDashboard() {
   const { signOut, currentUser, userData } = useAuth();
   const isDemo = userData?.isDemo === true;
 
-  // Im Demo-Modus werden keine Daten geschrieben
-  const demoBlock = () => {
-    if (!isDemo) return false;
-    alert('Demo-Modus: Diese Aktion wird nicht gespeichert. Alle Funktionen können angeschaut, aber keine Klassen, Lernenden oder Kommentare angelegt werden.');
-    return true;
-  };
-
   const [activeTab, setActiveTab] = useState('classes');
   const [classes, setClasses] = useState([]);
   const [learners, setLearners] = useState([]);
@@ -366,9 +359,23 @@ export default function TeacherDashboard() {
   };
 
   const createClass = async () => {
-    if (demoBlock()) return;
     if (!newClassName.trim() || !currentUser) return;
     if (newClassSubjects.length === 0) { alert('Bitte mindestens ein Fach auswählen.'); return; }
+    if (isDemo) {
+      // Demo: Klasse nur lokal anlegen (verschwindet beim Neuladen)
+      setClasses(prev => [{
+        id: `demo-local-${Date.now()}`,
+        name: newClassName.trim(),
+        teacherIds: [currentUser.uid],
+        teacherNames: { [currentUser.uid]: 'Demo-Lehrperson' },
+        subjectIds: newClassSubjects,
+        joinCode: generateCode(),
+        createdAt: { toMillis: () => Date.now() }
+      }, ...prev]);
+      setNewClassName('');
+      setNewClassSubjects([]);
+      return;
+    }
     setCreatingClass(true);
     try {
       await addDoc(collection(db, 'classes'), {
@@ -387,7 +394,11 @@ export default function TeacherDashboard() {
   };
 
   const joinClass = async () => {
-    if (demoBlock()) return;
+    if (isDemo) {
+      setJoinMessage('Demo-Modus: Der Beitritt wird nur simuliert und nicht gespeichert.');
+      setJoinCodeInput('');
+      return;
+    }
     const code = joinCodeInput.toUpperCase().trim();
     if (code.length !== 6 || !currentUser) { setJoinMessage('Bitte 6-stelligen Klassen-Code eingeben.'); return; }
     setJoining(true);
@@ -420,9 +431,13 @@ export default function TeacherDashboard() {
   };
 
   const leaveClass = async (cls) => {
-    if (demoBlock()) return;
     const teacherIds = cls.teacherIds || [];
     if (!confirm(`Klasse "${cls.name}" verlassen? Die Klasse bleibt für die anderen Lehrpersonen bestehen.`)) return;
+    if (isDemo) {
+      setClasses(prev => prev.filter(c => c.id !== cls.id));
+      if (selectedClassId === cls.id) setSelectedClassId('');
+      return;
+    }
     setLoading(true);
     try {
       const update = { teacherIds: arrayRemove(currentUser.uid) };
@@ -438,10 +453,16 @@ export default function TeacherDashboard() {
   };
 
   const deleteClass = async (classId) => {
-    if (demoBlock()) return;
     const cls = classes.find(c => c.id === classId);
     const learnersInClass = (learnersByClass[classId] || []);
     if (!confirm(`Klasse "${cls?.name}" wirklich löschen? ${learnersInClass.length} Lernende in dieser Klasse werden ebenfalls entfernt. Dies gilt auch für Co-Lehrpersonen.`)) return;
+    if (isDemo) {
+      // Demo: nur lokal entfernen (nach Neuladen wieder da)
+      setClasses(prev => prev.filter(c => c.id !== classId));
+      setLearners(prev => prev.filter(l => l.classId !== classId));
+      if (selectedClassId === classId) setSelectedClassId('');
+      return;
+    }
     setLoading(true);
     try {
       const codesSnap = await getDocs(query(collection(db, 'learnerCodes'), where('classId', '==', classId)));
@@ -455,8 +476,11 @@ export default function TeacherDashboard() {
   };
 
   const deleteLearner = async (learner) => {
-    if (demoBlock()) return;
     if (!confirm(`"${learner.name}" wirklich löschen?`)) return;
+    if (isDemo) {
+      setLearners(prev => prev.filter(l => l.id !== learner.id));
+      return;
+    }
     setLoading(true);
     try {
       if (learner._isCodeOnly) {
@@ -485,7 +509,7 @@ export default function TeacherDashboard() {
 
   const copyJoinCode = async (cls) => {
     const code = await ensureJoinCode(cls);
-    if (!code) { demoBlock(); return; }
+    if (!code) return;
     await navigator.clipboard.writeText(code);
     alert(`Klassen-Code ${code} kopiert! Andere Lehrpersonen können damit der Klasse beitreten.`);
   };
@@ -498,11 +522,26 @@ export default function TeacherDashboard() {
   };
 
   const createCodes = async () => {
-    if (demoBlock()) return;
     if (!currentUser || !selectedClassId) { alert('Bitte Klasse wählen.'); return; }
+    const anzahl = Math.min(Math.max(1, codeAnzahl), MAX_CODES_PRO_DURCHGANG);
+
+    if (isDemo) {
+      // Demo: Codes nur lokal generieren, nichts wird gespeichert
+      const usedNames = new Set(learners.filter(l => l.classId === selectedClassId).map(l => l.name));
+      let nummer = usedNames.size + 1;
+      const out = [];
+      for (let i = 0; i < anzahl; i++) {
+        const name = generateFantasieName(usedNames, nummer);
+        usedNames.add(name);
+        nummer++;
+        out.push({ tier: name, code: generateCode() });
+      }
+      setGenerated(out);
+      return;
+    }
+
     const existingCodesSnap = await getDocs(query(collection(db, 'learnerCodes'), where('classId', '==', selectedClassId)));
     const usedNames = new Set(existingCodesSnap.docs.map(d => d.data().name));
-    const anzahl = Math.min(Math.max(1, codeAnzahl), MAX_CODES_PRO_DURCHGANG);
 
     // Fortlaufende Nummer: bei bestehenden Codes weiterzählen
     let nummer = existingCodesSnap.size + 1;
@@ -533,12 +572,13 @@ export default function TeacherDashboard() {
   const startNote = (entry) => { setNoteEntry(entry); setNoteEntryId(entry.id); setNoteText(entry.teacherNote || ''); };
 
   const saveNote = async () => {
-    if (demoBlock()) { setNoteEntryId(''); setNoteText(''); setNoteEntry(null); return; }
     if (!noteEntryId) return;
     setSavingNote(true);
     try {
       const collectionName = noteEntry?._collection || 'practiceEntriesEBA';
-      await updateDoc(doc(db, collectionName, noteEntryId), { teacherNote: noteText.trim() || null, teacherNoteAt: noteText.trim() ? Timestamp.now() : null });
+      if (!isDemo) {
+        await updateDoc(doc(db, collectionName, noteEntryId), { teacherNote: noteText.trim() || null, teacherNoteAt: noteText.trim() ? Timestamp.now() : null });
+      }
       const updater = e => e.id === noteEntryId ? { ...e, teacherNote: noteText.trim() || null } : e;
       setClassEntries(prev => {
         const updated = { ...prev };
