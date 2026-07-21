@@ -1,30 +1,19 @@
 import React, { useMemo } from 'react';
-import { Lock, Sparkles } from 'lucide-react';
-import {
-  gesellschaftsinhalte,
-  sprachmodi,
-  schluesselkompetenzen,
-  uiColors
-} from '../../data/curriculumEBA';
+import { Lock, Sparkles, Plus } from 'lucide-react';
+import { getSprachmodusById } from '../../data/curriculumEBA';
 
 // ============================================
-// ZIRKULARITÄTS-ALBUM (Panini-Prinzip)
-// Bildet die Zirkularität der Kompetenzen ab: Für jede Kompetenz aus den
-// drei Bereichen (Gesellschaftliche Inhalte, Sprachmodi, Schlüssel-
-// kompetenzen) gibt es ein festes Feld. Jedes Feld hat die Grundfarbe
-// seiner Hauptkompetenz; die R-Stufe (Abstufung) zeigt das Niveau:
+// KOMPETENZ-SAMMELALBUM (Manga-Sammelkarten)
+// Pro Thema → individueller Lebensbezug gibt es für jede Kompetenz eine
+// vordefinierte, graue Sammelkarte. Sie wird bei Durchführung in der
+// Themenfarbe eingefärbt und trägt eine R-Stufe (Zirkularität):
 //   R1 = Beginner · R2 = Advanced · R3 = Expert
-// Freiwillige Vertiefung (Wiederholung / zusätzlich geübte Sprachmodi)
-// bringt Plus-Auszeichnungen (+1 … +3).
-//
-// Für die Berufskunde (kind === 'bk') gibt es keine Zirkularität – dort
-// zeigt das Album ein Leistungsziel-Feld pro Semester/Gebiet.
+// Unter jedem Lebensbezug erscheinen zusätzlich freiwillig durchgeführte
+// Kompetenzen (z.B. optionale Sprachmodi) als Bonus-Marken.
 // ============================================
 
 const STATUS_WEIGHT = {
-  // Üben-Skala (Sprachmodi, Schlüsselkompetenzen, BK)
   kurz: 1, mittel: 2, stark: 3,
-  // Verständnis-Skala (Gesellschaftsinhalte)
   nichtVerstanden: 1, teilweiseVerstanden: 2, verstanden: 3
 };
 
@@ -34,6 +23,18 @@ export const R_STUFEN = [
   { r: 3, label: 'Expert' }
 ];
 const rLabel = (r) => R_STUFEN.find(x => x.r === r)?.label || '';
+
+// Manga-/Anime-artige Symbole, deterministisch pro Kompetenz zugewiesen
+const SYMBOLE = [
+  '⚡', '🔥', '💫', '⭐', '✨', '🎯', '🚀', '🛡️', '⚔️', '👑',
+  '💎', '🏆', '🐉', '🦅', '🦁', '🐺', '🦊', '🌊', '🌪️', '❄️',
+  '☄️', '🔮', '🧭', '⚙️', '🔋', '💥', '🌟', '🎖️', '🗡️', '🏅'
+];
+function symbolFor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return SYMBOLE[h % SYMBOLE.length];
+}
 
 const GEBIET_COLORS = {
   'Betriebliche Prozesse': '#0EA5E9',
@@ -45,166 +46,197 @@ const GEBIET_COLORS = {
   'Stoffkunde': '#14B8A6'
 };
 
-// Farbabstufung eines Feldes nach R-Stufe (0 = noch offen)
-function feldStyle(color, r) {
-  if (!r) return { style: {}, cls: 'border-2 border-dashed border-gray-300 bg-white/70 text-gray-400' };
-  if (r === 1) return { style: { backgroundColor: color + '26', borderColor: color + '77', color }, cls: 'border-2' };
-  if (r === 2) return { style: { backgroundColor: color + 'B3', borderColor: color, color: '#fff' }, cls: 'border-2' };
-  return { style: { backgroundColor: color, borderColor: color, color: '#fff' }, cls: 'border-2 shadow-md' };
-}
-
-// Aggregiert die Einträge, die auf ein Feld passen
-function aggregate(entries, matchFn) {
-  const ms = entries.filter(matchFn);
-  let w = 0, opt = 0;
-  for (const e of ms) {
-    w = Math.max(w, STATUS_WEIGHT[e.status] || 1);
-    if (e.isOptional) opt++;
-  }
-  const pflicht = ms.length - opt;
-  const plus = Math.min(3, opt + Math.max(0, pflicht - 1));
-  return { r: w, plus, count: ms.length };
-}
+// k1-2-3 → «1.2.3»
+const kompetenzCode = (id) => (id || '').replace(/^k/, '').split('-').join('.');
 
 // ============================================
-// Einzelnes Album-Feld
+// Sammelkarte (Manga-Style)
 // ============================================
-function AlbumFeld({ code, label, color, r, plus = 0 }) {
-  const { style, cls } = feldStyle(color, r);
+function Sammelkarte({ symbol, code, title, color, r, plus = 0 }) {
   const filled = !!r;
-  const titleParts = [label];
-  if (filled) titleParts.push(`R${r} · ${rLabel(r)}`);
-  else titleParts.push('noch offen');
-  if (plus > 0) titleParts.push(`+${plus} freiwillige Vertiefung`);
+  const rInfo = filled ? rLabel(r) : '';
+
+  // Farbabstufung nach R-Stufe
+  let cardStyle, headStyle, textCls, holo = false;
+  if (!filled) {
+    cardStyle = { borderColor: '#D1D5DB' };
+    headStyle = { background: 'repeating-linear-gradient(45deg,#F3F4F6,#F3F4F6 6px,#E5E7EB 6px,#E5E7EB 12px)' };
+    textCls = 'text-gray-400';
+  } else if (r === 1) {
+    cardStyle = { borderColor: color + '88', backgroundColor: color + '10' };
+    headStyle = { backgroundColor: color + '33' };
+    textCls = 'text-gray-800';
+  } else if (r === 2) {
+    cardStyle = { borderColor: color, backgroundColor: color + '22' };
+    headStyle = { backgroundColor: color + 'CC' };
+    textCls = 'text-gray-900';
+  } else {
+    holo = true;
+    cardStyle = { borderColor: color, backgroundColor: color + '22' };
+    headStyle = { background: `linear-gradient(135deg, ${color}, #ffffff88 45%, ${color})` };
+    textCls = 'text-gray-900';
+  }
 
   return (
     <div
-      className={`relative aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 p-1 text-center overflow-hidden ${cls}`}
-      style={style}
-      title={titleParts.join(' – ')}
+      className="relative rounded-xl border-2 overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-shadow"
+      style={cardStyle}
+      title={`${code} · ${title}${filled ? ` – R${r} ${rInfo}` : ' – noch offen'}${plus ? ` · +${plus} freiwillig` : ''}`}
     >
+      {/* Plus-Auszeichnung */}
       {plus > 0 && (
-        <span className="absolute top-0.5 right-0.5 bg-amber-400 text-amber-900 text-[0.58rem] font-extrabold rounded-full px-1 leading-tight shadow border border-white">
-          +{plus}
+        <span className="absolute top-1 right-1 z-10 bg-amber-400 text-amber-900 text-[0.6rem] font-extrabold rounded-full px-1.5 leading-tight shadow border border-white flex items-center">
+          <Plus className="w-2.5 h-2.5" strokeWidth={3} />{plus}
         </span>
       )}
-      {filled ? (
-        <>
-          <span className="text-sm font-extrabold leading-none">R{r}</span>
-          <span className="text-[0.6rem] font-semibold leading-tight line-clamp-2">{code || label}</span>
-          <span className="text-[0.5rem] leading-none opacity-90">{rLabel(r)}</span>
-        </>
-      ) : (
-        <>
-          <Lock className="w-3.5 h-3.5 text-gray-300" />
-          <span className="text-[0.58rem] font-medium text-gray-400 leading-tight line-clamp-2">{code || label}</span>
-        </>
-      )}
+
+      {/* Symbol-Kopf */}
+      <div className="relative h-14 flex items-center justify-center" style={headStyle}>
+        <span className={`text-3xl leading-none ${filled ? '' : 'grayscale opacity-40'}`}>{symbol}</span>
+        {holo && <span className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(115deg, transparent 30%, #ffffff66 50%, transparent 70%)' }} />}
+        {!filled && (
+          <span className="absolute inset-0 flex items-center justify-center">
+            <Lock className="w-5 h-5 text-gray-400" />
+          </span>
+        )}
+      </div>
+
+      {/* Karten-Körper */}
+      <div className="flex-1 px-1.5 py-1.5 flex flex-col items-center text-center gap-0.5">
+        <span className={`text-[0.7rem] font-extrabold leading-none ${textCls}`}>{code}</span>
+        <span className={`text-[0.58rem] leading-tight line-clamp-3 ${filled ? 'text-gray-600' : 'text-gray-400'}`}>{title}</span>
+      </div>
+
+      {/* R-Stufen-Fuss */}
+      <div className="px-1.5 py-1 flex items-center justify-center border-t" style={{ borderColor: filled ? color + '44' : '#E5E7EB' }}>
+        {filled ? (
+          <span className="text-[0.62rem] font-bold flex items-center gap-1" style={{ color }}>
+            <span className="px-1.5 py-0.5 rounded text-white text-[0.58rem]" style={{ backgroundColor: color }}>R{r}</span>
+            {rInfo}
+          </span>
+        ) : (
+          <span className="text-[0.58rem] text-gray-400">noch offen</span>
+        )}
+      </div>
     </div>
   );
 }
 
-// ============================================
-// ABU: Zirkularitäts-Album (3 Bereiche)
-// ============================================
-function ZirkAlbum({ entries }) {
-  const sections = useMemo(() => [
-    {
-      key: 'gesellschaft',
-      title: 'Gesellschaftliche Inhalte',
-      base: uiColors.gesellschaft.text,
-      felder: gesellschaftsinhalte.map(g => ({
-        id: g.id, label: g.label, code: null, color: g.color,
-        match: e => e.type === 'gesellschaft' && e.bereich === g.id
-      }))
-    },
-    {
-      key: 'sprache',
-      title: 'Sprachmodi',
-      base: uiColors.sprache.text,
-      felder: sprachmodi.map(s => ({
-        id: s.id, label: `${s.label} (${s.code})`, code: s.label, color: uiColors.sprache.text,
-        match: e => e.type === 'sprachmodus' && e.modus === s.id
-      }))
-    },
-    {
-      key: 'schluessel',
-      title: 'Schlüsselkompetenzen',
-      base: uiColors.schluessel.text,
-      felder: schluesselkompetenzen.map(sk => ({
-        id: sk.id, label: `${sk.code}: ${sk.label}`, code: sk.code, color: uiColors.schluessel.text,
-        match: e => e.type === 'schluesselkompetenz' && e.schluesselkompetenzId === sk.id
-      }))
-    }
-  ], []);
+// R-Stufe einer ABU-Kompetenz = höchstes erreichtes Niveau über alle ihre
+// (Pflicht-)Bestandteile: Gesellschaftsinhalte, Sprachmodi, Schlüsselkompetenzen.
+//   R1 = Beginner (kurz / noch nicht verstanden)
+//   R2 = Advanced (mittel / teilweise verstanden)
+//   R3 = Expert (stark / verstanden)
+function kompetenzProgress(k, entries) {
+  const ms = entries.filter(e => e.kompetenzId === k.id && !e.isOptional);
+  let r = 0;
+  for (const e of ms) r = Math.max(r, STATUS_WEIGHT[e.status] || 1);
+  const plus = Math.min(3, entries.filter(e => e.kompetenzId === k.id && e.isOptional).length);
+  return { r, plus };
+}
 
-  // Aggregate pro Feld berechnen
-  const computed = useMemo(() => sections.map(sec => ({
-    ...sec,
-    felder: sec.felder.map(f => ({ ...f, ...aggregate(entries, f.match) }))
-  })), [sections, entries]);
+// ============================================
+// ABU: Sammelalbum nach Thema → Lebensbezug
+// ============================================
+function AbuAlbum({ subject, entries }) {
+  const themen = subject.curriculum?.themen || [];
 
-  const alleFelder = computed.flatMap(s => s.felder);
-  const total = alleFelder.length;
-  const erreicht = alleFelder.filter(f => f.r > 0).length;
-  const plusTotal = alleFelder.reduce((acc, f) => acc + f.plus, 0);
-  const countByR = R_STUFEN.map(n => ({ ...n, count: alleFelder.filter(f => f.r === n.r).length }));
+  const data = useMemo(() => themen.map(t => ({
+    thema: t,
+    lebensbezuege: t.lebensbezuege.map(lb => {
+      const karten = lb.kompetenzen.map(k => ({
+        id: k.id,
+        code: kompetenzCode(k.id),
+        title: k.text,
+        symbol: symbolFor(k.id),
+        ...kompetenzProgress(k, entries)
+      }));
+      // Zusätzlich (freiwillig) durchgeführte Sprachmodi in diesem Lebensbezug
+      const kompIds = new Set(lb.kompetenzen.map(k => k.id));
+      const bonusMap = new Map();
+      for (const e of entries) {
+        if (!e.isOptional || !kompIds.has(e.kompetenzId)) continue;
+        const modus = getSprachmodusById(e.modus);
+        const key = e.modus;
+        if (!bonusMap.has(key)) bonusMap.set(key, { label: modus?.label || e.modus, code: modus?.code, count: 0 });
+        bonusMap.get(key).count++;
+      }
+      return { lb, karten, bonus: [...bonusMap.values()] };
+    })
+  })), [themen, entries]);
+
+  const alleKarten = data.flatMap(t => t.lebensbezuege.flatMap(l => l.karten));
+  const total = alleKarten.length;
+  const erreicht = alleKarten.filter(k => k.r > 0).length;
+  const countByR = R_STUFEN.map(n => ({ ...n, count: alleKarten.filter(k => k.r === n.r).length }));
+  const plusTotal = alleKarten.reduce((a, k) => a + k.plus, 0);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-6">
       <h2 className="text-lg font-bold mb-1 flex items-center gap-2">
         <Sparkles className="w-5 h-5 text-blue-600" />
-        Mein Zirkularitäts-Album
+        Mein Kompetenz-Sammelalbum
       </h2>
       <p className="text-sm text-gray-600 mb-3">
-        Jede Kompetenz hat ihr festes Feld in der Grundfarbe ihres Bereichs. Je nach deinem Niveau
-        färbt sich das Feld dunkler – von <strong>R1 Beginner</strong> über <strong>R2 Advanced</strong> bis <strong>R3 Expert</strong>.
-        Für freiwillige Vertiefung (Wiederholung oder zusätzlich geübte Modi) gibt es <span className="text-amber-600 font-semibold">＋-Auszeichnungen</span>.
+        Für jede Kompetenz gibt es eine Sammelkarte. Sie startet grau und färbt sich, sobald du daran
+        arbeitest – deine Zirkularitätsstufe steigt von <strong>R1 Beginner</strong> über
+        <strong> R2 Advanced</strong> bis <strong>R3 Expert</strong>. Freiwillig zusätzlich geübte Kompetenzen
+        erscheinen als <span className="text-amber-600 font-semibold">Bonus</span> unter dem Lebensbezug.
       </p>
 
-      {/* Fortschritt + Niveau-Übersicht */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
-        <span className="text-sm font-semibold text-blue-700">{erreicht} / {total} Feldern erreicht</span>
+        <span className="text-sm font-semibold text-blue-700">{erreicht} / {total} Karten freigespielt</span>
         {countByR.map(n => (
-          <span key={n.r} className="text-xs px-2 py-1 rounded-full bg-gray-100 border">
-            R{n.r} {n.label}: <strong>{n.count}</strong>
-          </span>
+          <span key={n.r} className="text-xs px-2 py-1 rounded-full bg-gray-100 border">R{n.r} {n.label}: <strong>{n.count}</strong></span>
         ))}
         {plusTotal > 0 && (
-          <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
-            ＋{plusTotal} freiwillig
-          </span>
+          <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-semibold">＋{plusTotal} Bonus</span>
         )}
       </div>
 
-      <div className="space-y-6">
-        {computed.map(sec => {
-          const secErreicht = sec.felder.filter(f => f.r > 0).length;
-          return (
-            <div key={sec.key}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sec.base }} />
-                <h3 className="font-semibold text-sm text-gray-800">{sec.title}</h3>
-                <span className="text-xs text-gray-400">{secErreicht}/{sec.felder.length}</span>
-              </div>
-              <div
-                className="rounded-xl border-2 border-dashed p-3"
-                style={{ borderColor: sec.base + '40', backgroundColor: sec.base + '08' }}
-              >
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
-                  {sec.felder.map(f => (
-                    <AlbumFeld key={f.id} code={f.code} label={f.label} color={f.color} r={f.r} plus={f.plus} />
-                  ))}
-                </div>
-              </div>
+      <div className="space-y-8">
+        {data.map(({ thema, lebensbezuege }) => (
+          <div key={thema.id}>
+            {/* Thema-Kopf */}
+            <div className="flex items-center gap-2 mb-3 pb-1.5 border-b-2" style={{ borderColor: thema.color }}>
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: thema.color }} />
+              <h3 className="font-bold text-gray-900">Thema {thema.order}: {thema.title}</h3>
             </div>
-          );
-        })}
+
+            <div className="space-y-5">
+              {lebensbezuege.map(({ lb, karten, bonus }) => (
+                <div key={lb.id}>
+                  <div className="text-sm font-medium text-gray-700 mb-2 flex items-start gap-1.5">
+                    <span className="text-gray-400 shrink-0">▸</span>
+                    <span>{lb.title}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                    {karten.map(k => (
+                      <Sammelkarte key={k.id} symbol={k.symbol} code={k.code} title={k.title} color={thema.color} r={k.r} plus={k.plus} />
+                    ))}
+                  </div>
+                  {bonus.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-amber-700 font-medium flex items-center gap-0.5">
+                        <Plus className="w-3 h-3" strokeWidth={3} /> Zusätzlich geübt:
+                      </span>
+                      {bonus.map(b => (
+                        <span key={b.code || b.label} className="text-[0.65rem] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                          {b.label}{b.code ? ` (${b.code})` : ''}{b.count > 1 ? ` ×${b.count}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       {erreicht === 0 && (
         <p className="text-sm text-gray-500 mt-4 text-center">
-          Noch keine Felder erreicht – erfasse deine erste Kompetenz, um dein Album zu starten!
+          Noch keine Karte freigespielt – erfasse deine erste Kompetenz, um dein Album zu starten!
         </p>
       )}
     </div>
@@ -212,7 +244,7 @@ function ZirkAlbum({ entries }) {
 }
 
 // ============================================
-// Berufskunde: Leistungsziel-Album (Semester/Gebiet)
+// Berufskunde: Sammelalbum nach Semester → Gebiet
 // ============================================
 function BkAlbum({ subject, entries }) {
   const levelByKey = useMemo(() => {
@@ -228,74 +260,69 @@ function BkAlbum({ subject, entries }) {
   const sections = useMemo(() => (subject.bk?.semester || []).map(sem => ({
     id: `sem-${sem.semester}`,
     title: `${sem.semester}. Semester`,
-    felder: sem.gebiete.flatMap(g =>
-      g.ziele.map(z => ({
+    gebiete: sem.gebiete.map(g => ({
+      name: g.name,
+      color: GEBIET_COLORS[g.name] || '#6B7280',
+      karten: g.ziele.map(z => ({
         key: `s${sem.semester}-${z.lnr.replace(/\./g, '')}`,
         code: z.lnr,
-        label: `${g.name} · ${z.thema}`,
-        color: GEBIET_COLORS[g.name] || '#6B7280'
+        title: z.thema,
+        symbol: symbolFor(z.lnr)
       }))
-    )
+    }))
   })), [subject]);
 
-  const alle = sections.flatMap(s => s.felder);
-  const erreicht = alle.filter(f => levelByKey.has(f.key)).length;
-  const countByR = R_STUFEN.map(n => ({
-    ...n, count: alle.filter(f => levelByKey.get(f.key) === n.r).length
-  }));
+  const alle = sections.flatMap(s => s.gebiete.flatMap(g => g.karten));
+  const erreicht = alle.filter(k => levelByKey.has(k.key)).length;
+  const countByR = R_STUFEN.map(n => ({ ...n, count: alle.filter(k => levelByKey.get(k.key) === n.r).length }));
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-6">
       <h2 className="text-lg font-bold mb-1 flex items-center gap-2">
         <Sparkles className="w-5 h-5" style={{ color: subject.color }} />
-        Mein Kompetenz-Album
+        Mein Kompetenz-Sammelalbum
       </h2>
       <p className="text-sm text-gray-600 mb-3">
-        Jedes Leistungsziel hat sein Feld in der Farbe seines Gebiets. Dein Niveau steigt von
-        <strong> R1 Beginner</strong> über <strong>R2 Advanced</strong> bis <strong>R3 Expert</strong>.
+        Für jedes Leistungsziel gibt es eine Sammelkarte. Sie färbt sich bei Durchführung –
+        dein Niveau steigt von <strong>R1 Beginner</strong> über <strong>R2 Advanced</strong> bis <strong>R3 Expert</strong>.
       </p>
 
       <div className="flex flex-wrap items-center gap-2 mb-6">
-        <span className="text-sm font-semibold" style={{ color: subject.color }}>{erreicht} / {alle.length} Feldern erreicht</span>
+        <span className="text-sm font-semibold" style={{ color: subject.color }}>{erreicht} / {alle.length} Karten freigespielt</span>
         {countByR.map(n => (
-          <span key={n.r} className="text-xs px-2 py-1 rounded-full bg-gray-100 border">
-            R{n.r} {n.label}: <strong>{n.count}</strong>
-          </span>
+          <span key={n.r} className="text-xs px-2 py-1 rounded-full bg-gray-100 border">R{n.r} {n.label}: <strong>{n.count}</strong></span>
         ))}
       </div>
 
-      <div className="space-y-6">
-        {sections.map(sec => {
-          const secErreicht = sec.felder.filter(f => levelByKey.has(f.key)).length;
-          return (
-            <div key={sec.id}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: subject.color }} />
-                <h3 className="font-semibold text-sm text-gray-800">{sec.title}</h3>
-                <span className="text-xs text-gray-400">{secErreicht}/{sec.felder.length}</span>
-              </div>
-              <div
-                className="rounded-xl border-2 border-dashed p-3"
-                style={{ borderColor: subject.color + '40', backgroundColor: subject.color + '08' }}
-              >
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
-                  {sec.felder.map(f => (
-                    <AlbumFeld key={f.key} code={f.code} label={f.label} color={f.color} r={levelByKey.get(f.key) || 0} />
-                  ))}
-                </div>
-              </div>
+      <div className="space-y-8">
+        {sections.map(sec => (
+          <div key={sec.id}>
+            <div className="flex items-center gap-2 mb-3 pb-1.5 border-b-2" style={{ borderColor: subject.color }}>
+              <h3 className="font-bold text-gray-900">{sec.title}</h3>
             </div>
-          );
-        })}
+            <div className="space-y-5">
+              {sec.gebiete.map(g => (
+                <div key={g.name}>
+                  <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: g.color }} />
+                    {g.name}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                    {g.karten.map(k => (
+                      <Sammelkarte key={k.key} symbol={k.symbol} code={k.code} title={k.title} color={g.color} r={levelByKey.get(k.key) || 0} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-// ============================================
-// Öffentliche Album-Komponente
-// ============================================
 export function AlbumView({ subject, entries = [] }) {
   if (subject.kind === 'bk') return <BkAlbum subject={subject} entries={entries} />;
-  return <ZirkAlbum entries={entries} />;
+  return <AbuAlbum subject={subject} entries={entries} />;
 }
