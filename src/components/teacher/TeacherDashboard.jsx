@@ -25,6 +25,7 @@ import {
   LogOut, Users, Plus, Copy, MessageSquare, Download, Trash2, BarChart3,
   Bell, CheckCircle, Send, UserPlus, LogIn, GraduationCap, Wrench, Filter
 } from 'lucide-react';
+import DemoBanner from '../DemoBanner';
 
 // Bausteine für Fantasienamen: Adjektiv + Wesen, dazu eine fortlaufende Nummer pro Klasse
 const FANTASIE_ADJEKTIVE = [
@@ -149,6 +150,14 @@ function SubjectBadge({ subject, small = false }) {
 // ============================================
 export default function TeacherDashboard() {
   const { signOut, currentUser, userData } = useAuth();
+  const isDemo = userData?.isDemo === true;
+
+  // Im Demo-Modus werden keine Daten geschrieben
+  const demoBlock = () => {
+    if (!isDemo) return false;
+    alert('Demo-Modus: Diese Aktion wird nicht gespeichert. Alle Funktionen können angeschaut, aber keine Klassen, Lernenden oder Kommentare angelegt werden.');
+    return true;
+  };
 
   const [activeTab, setActiveTab] = useState('classes');
   const [classes, setClasses] = useState([]);
@@ -357,6 +366,7 @@ export default function TeacherDashboard() {
   };
 
   const createClass = async () => {
+    if (demoBlock()) return;
     if (!newClassName.trim() || !currentUser) return;
     if (newClassSubjects.length === 0) { alert('Bitte mindestens ein Fach auswählen.'); return; }
     setCreatingClass(true);
@@ -377,6 +387,7 @@ export default function TeacherDashboard() {
   };
 
   const joinClass = async () => {
+    if (demoBlock()) return;
     const code = joinCodeInput.toUpperCase().trim();
     if (code.length !== 6 || !currentUser) { setJoinMessage('Bitte 6-stelligen Klassen-Code eingeben.'); return; }
     setJoining(true);
@@ -409,6 +420,7 @@ export default function TeacherDashboard() {
   };
 
   const leaveClass = async (cls) => {
+    if (demoBlock()) return;
     const teacherIds = cls.teacherIds || [];
     if (!confirm(`Klasse "${cls.name}" verlassen? Die Klasse bleibt für die anderen Lehrpersonen bestehen.`)) return;
     setLoading(true);
@@ -426,6 +438,7 @@ export default function TeacherDashboard() {
   };
 
   const deleteClass = async (classId) => {
+    if (demoBlock()) return;
     const cls = classes.find(c => c.id === classId);
     const learnersInClass = (learnersByClass[classId] || []);
     if (!confirm(`Klasse "${cls?.name}" wirklich löschen? ${learnersInClass.length} Lernende in dieser Klasse werden ebenfalls entfernt. Dies gilt auch für Co-Lehrpersonen.`)) return;
@@ -442,6 +455,7 @@ export default function TeacherDashboard() {
   };
 
   const deleteLearner = async (learner) => {
+    if (demoBlock()) return;
     if (!confirm(`"${learner.name}" wirklich löschen?`)) return;
     setLoading(true);
     try {
@@ -459,6 +473,7 @@ export default function TeacherDashboard() {
   const ensureJoinCode = async (cls) => {
     // Für Alt-Klassen ohne joinCode nachträglich einen erzeugen
     if (cls.joinCode) return cls.joinCode;
+    if (isDemo) return null;
     const code = generateCode();
     await updateDoc(doc(db, 'classes', cls.id), {
       joinCode: code,
@@ -470,6 +485,7 @@ export default function TeacherDashboard() {
 
   const copyJoinCode = async (cls) => {
     const code = await ensureJoinCode(cls);
+    if (!code) { demoBlock(); return; }
     await navigator.clipboard.writeText(code);
     alert(`Klassen-Code ${code} kopiert! Andere Lehrpersonen können damit der Klasse beitreten.`);
   };
@@ -482,6 +498,7 @@ export default function TeacherDashboard() {
   };
 
   const createCodes = async () => {
+    if (demoBlock()) return;
     if (!currentUser || !selectedClassId) { alert('Bitte Klasse wählen.'); return; }
     const existingCodesSnap = await getDocs(query(collection(db, 'learnerCodes'), where('classId', '==', selectedClassId)));
     const usedNames = new Set(existingCodesSnap.docs.map(d => d.data().name));
@@ -516,6 +533,7 @@ export default function TeacherDashboard() {
   const startNote = (entry) => { setNoteEntry(entry); setNoteEntryId(entry.id); setNoteText(entry.teacherNote || ''); };
 
   const saveNote = async () => {
+    if (demoBlock()) { setNoteEntryId(''); setNoteText(''); setNoteEntry(null); return; }
     if (!noteEntryId) return;
     setSavingNote(true);
     try {
@@ -568,6 +586,8 @@ export default function TeacherDashboard() {
           </button>
         </div>
       </header>
+
+      {isDemo && <DemoBanner role="teacher" />}
 
       <main className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex gap-2 mb-6 flex-wrap">

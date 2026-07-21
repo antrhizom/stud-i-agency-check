@@ -126,6 +126,7 @@ export default function CodeLogin({ role, onBack, initialCode = '' }) {
             code: codeUpper,
             teacherId: codeData.teacherId,
             classId: codeData.classId,
+            isDemo: codeData.isDemo || false,
             createdAt: Timestamp.now(),
             firstLogin: Timestamp.now()
           });

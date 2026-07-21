@@ -26,6 +26,10 @@ import {
   Bell,
   BookOpen
 } from 'lucide-react';
+import DemoBanner from '../DemoBanner';
+
+// Beispiel-Lernende:r, deren BK-Einträge im Demo-Modus angezeigt werden
+const DEMO_LEARNER_ID = 'demo-lernende-2';
 
 const STATUS_OPTIONS = [
   { id: 'kurz', label: 'kurz geübt', color: '#FEF3C7' },
@@ -241,6 +245,7 @@ function ZielCard({ ziel, semester, entries, onSave }) {
 // ============================================
 export default function LearnerPracticeBK({ subject }) {
   const { signOut, userData, currentUser } = useAuth();
+  const isDemo = userData?.isDemo === true;
   const bk = subject.bk;
   const [activeTab, setActiveTab] = useState('ueben'); // ueben | eintraege | fortschritt
   const [activeSemester, setActiveSemester] = useState(1);
@@ -257,7 +262,7 @@ export default function LearnerPracticeBK({ subject }) {
     try {
       const q = query(
         collection(db, 'practiceEntriesBK'),
-        where('learnerId', '==', currentUser.uid),
+        where('learnerId', '==', isDemo ? DEMO_LEARNER_ID : currentUser.uid),
         where('subjectId', '==', subject.id)
       );
       const snap = await getDocs(q);
@@ -282,6 +287,7 @@ export default function LearnerPracticeBK({ subject }) {
 
   const saveEntry = async (data) => {
     if (!currentUser) return;
+    if (isDemo) { alert('Demo-Modus: Neue Einträge werden nicht gespeichert. Probiere die Erfassung gerne aus – im echten Konto landet sie im Lernjournal.'); return; }
     try {
       const docRef = await addDoc(collection(db, 'practiceEntriesBK'), {
         learnerId: currentUser.uid,
@@ -307,6 +313,7 @@ export default function LearnerPracticeBK({ subject }) {
   };
 
   const handleDelete = async (id) => {
+    if (isDemo) { alert('Demo-Modus: Es werden keine Daten gespeichert oder gelöscht.'); return; }
     if (!confirm('Eintrag wirklich löschen?')) return;
     try {
       await deleteDoc(doc(db, 'practiceEntriesBK', id));
@@ -318,6 +325,7 @@ export default function LearnerPracticeBK({ subject }) {
 
   const saveReply = async () => {
     if (!replyEntry) return;
+    if (isDemo) { alert('Demo-Modus: Antworten werden nicht gespeichert.'); setReplyEntry(null); setReplyText(''); return; }
     setSavingReply(true);
     try {
       await updateDoc(doc(db, 'practiceEntriesBK', replyEntry.id), {
@@ -403,6 +411,8 @@ export default function LearnerPracticeBK({ subject }) {
           </button>
         </div>
       </header>
+
+      {isDemo && <DemoBanner role="learner" />}
 
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Hauptnavigation */}

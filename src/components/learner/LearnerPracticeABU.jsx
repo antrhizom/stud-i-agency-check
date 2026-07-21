@@ -47,6 +47,10 @@ import {
   Bell
 } from 'lucide-react';
 import ZirkularitaetDashboard from './ZirkularitaetDashboard';
+import DemoBanner from '../DemoBanner';
+
+// Beispiel-Lernende:r, deren Einträge im Demo-Modus angezeigt werden
+const DEMO_LEARNER_ID = 'demo-lernende-1';
 
 // ============================================
 // STATUS OPTIONS (Gewichtete Stufen)
@@ -921,6 +925,7 @@ const EntryDetailCard = ({ entry, themen, onDelete, onReply }) => {
 
 export default function LearnerPracticeABU({ subject: subjectProp }) {
   const { signOut, userData, currentUser } = useAuth();
+  const isDemo = userData?.isDemo === true;
   const subject = subjectProp || getSubjectById(DEFAULT_SUBJECT_ID);
   const themen = subject.curriculum.themen;
   const lehrjahre = Array.from(
@@ -947,7 +952,7 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
     try {
       const q = query(
         collection(db, 'practiceEntriesEBA'),
-        where('learnerId', '==', currentUser.uid)
+        where('learnerId', '==', isDemo ? DEMO_LEARNER_ID : currentUser.uid)
       );
       const snap = await getDocs(q);
       let data = snap.docs.map(d => ({
@@ -969,6 +974,7 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
 
   // Delete entry
   const handleDeleteEntry = async (entryId) => {
+    if (isDemo) { alert('Demo-Modus: Es werden keine Daten gespeichert oder gelöscht.'); return; }
     if (!confirm('Eintrag wirklich löschen?')) return;
     setLoading(true);
     try {
@@ -989,6 +995,7 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
   // Generischer Save-Handler – kein setLoading(true), damit ThemaCards nicht unmounten
   const saveEntry = async (data) => {
     if (!currentUser) return;
+    if (isDemo) { alert('Demo-Modus: Neue Einträge werden nicht gespeichert. Probiere die Erfassung gerne aus – im echten Konto landet sie im Lernjournal.'); return; }
     try {
       const docRef = await addDoc(collection(db, 'practiceEntriesEBA'), {
         learnerId: currentUser.uid,
@@ -1019,6 +1026,7 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
   // Antwort der Lernenden auf Lehrpersonen-Kommentar
   const saveReply = async () => {
     if (!replyEntry) return;
+    if (isDemo) { alert('Demo-Modus: Antworten werden nicht gespeichert.'); setReplyEntry(null); setReplyText(''); return; }
     setSavingReply(true);
     try {
       await updateDoc(doc(db, 'practiceEntriesEBA', replyEntry.id), {
@@ -1118,6 +1126,8 @@ export default function LearnerPracticeABU({ subject: subjectProp }) {
           </button>
         </div>
       </header>
+
+      {isDemo && <DemoBanner role="learner" />}
 
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Hauptnavigation */}
